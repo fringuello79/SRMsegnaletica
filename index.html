@@ -114,6 +114,7 @@
       <button type="button" class="btn" id="btnGpx">Scarica i segnali (GPX per orologio o GPS)</button>
       <button type="button" class="btn" id="btnCsv">Scarica l'inventario (CSV)</button>
       <button type="button" class="btn" id="btnGuida">Come si usa</button>
+      <button type="button" class="btn" id="btnRinumera">Rinumera in ordine di chilometro</button>
       <button type="button" class="btn" id="btnCambiaNome">Cambia nome o squadra</button>
     </div>
     <p class="dlg-nota" id="menuInfo"></p>
@@ -169,6 +170,18 @@
     <div class="riga-btn">
       <button class="btn" value="annulla" formnovalidate>Annulla</button>
       <button class="btn btn-primario" value="ok">Aggiungi</button>
+    </div>
+  </form>
+</dialog>
+
+<!-- Rinumerazione -->
+<dialog id="dlgRinumera" class="dlg">
+  <form method="dialog">
+    <h2>Rinumera i paletti</h2>
+    <div id="rinumeraCorpo"></div>
+    <div class="riga-btn">
+      <button class="btn" value="annulla" formnovalidate>Annulla</button>
+      <button class="btn btn-primario" value="ok" id="rinumeraOk">Rinumera</button>
     </div>
   </form>
 </dialog>

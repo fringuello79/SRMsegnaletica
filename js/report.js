@@ -3,6 +3,7 @@ import { Traccia, fmtKm, fmtCoord } from './geo.js';
 import { STATI, DIR_LABEL, frecciaCartello, frecciaMappa } from './frecce.js';
 import { creaStore } from './store.js';
 import { firebaseConfig } from '../firebase-config.js';
+const N = s => s?.num || s?.id || '';
 
 const $ = s => document.querySelector(s);
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -44,14 +45,14 @@ function render(segnali, fonte) {
   const mp = L.map('mappaPanoramica', { zoomControl: false, attributionControl: true, zoomSnap: 0.25, fadeAnimation: false, zoomAnimation: false, scrollWheelZoom: false, dragging: false, doubleClickZoom: false, boxZoom: false, keyboard: false, touchZoom: false });
   L.tileLayer(ESRI, { attribution: 'Immagini © Esri', maxNativeZoom: 19 }).addTo(mp);
   aggiungiTraccia(mp, 4);
-  segnali.forEach(s => L.marker([s.lat, s.lon], { icon: L.divIcon({ className: 'num-pan', iconSize: [30, 20], iconAnchor: [15, 10], html: `<span style="--c:${(STATI[s.stato] || STATI.da_verificare).colore}">${esc(s.id.replace('S', ''))}</span>` }) }).addTo(mp));
+  segnali.forEach(s => L.marker([s.lat, s.lon], { icon: L.divIcon({ className: 'num-pan', iconSize: [30, 20], iconAnchor: [15, 10], html: `<span style="--c:${(STATI[s.stato] || STATI.da_verificare).colore}">${esc(N(s).replace('S', ''))}</span>` }) }).addTo(mp));
   poi.forEach(p => L.circleMarker([p.lat, p.lon], { radius: 4, color: '#fff', weight: 2, fillColor: '#1f5fad', fillOpacity: 1 }).addTo(mp));
   mp.fitBounds(L.latLngBounds(T.latlngs()), { padding: [14, 14] });
   mappe.push(mp);
 
   // tabella
   $('#tabella tbody').innerHTML = segnali.map(s => `<tr>
-    <td><b>${esc(s.id)}</b></td><td>${s.frecce.map(f => fmtKm(f.km)).join('<br>')}</td>
+    <td><b>${esc(N(s))}</b></td><td>${s.frecce.map(f => fmtKm(f.km)).join('<br>')}</td>
     <td>${s.frecce.map(f => `${esc(f.codice)} ${DIR_LABEL[f.dir]}${f.origine === 'proposta' ? ' <em>(proposta)</em>' : ''}`).join('<br>')}</td>
     <td>${esc(T.sentiero(s.km))}</td><td>${Math.round(T.at(s.km)[2])} m</td>
     <td>${(STATI[s.stato] || STATI.da_verificare).breve}</td>
@@ -86,12 +87,12 @@ function scheda(s) {
   const verificato = s.stato !== 'da_verificare';
   return `<article class="scheda">
     <header class="sc-testa">
-      <span class="sc-num">${esc(s.id)}</span>
+      <span class="sc-num">${esc(N(s))}</span>
       <div><b>km ${s.frecce.map(f => fmtKm(f.km)).join(' e ')}</b><span>Sentiero ${esc(T.sentiero(s.km))}, quota ${ele} m</span></div>
       <span class="stato" style="--c:${st.colore}">${st.label}</span>
     </header>
     <div class="sc-corpo">
-      <div class="sc-mappa" id="m-${esc(s.id)}" aria-label="Mappa satellitare del punto ${esc(s.id)}"></div>
+      <div class="sc-mappa" id="m-${esc(s.id)}" aria-label="Mappa satellitare del punto ${esc(N(s))}"></div>
       <div class="sc-info">
         ${s.frecce.map(f => `<div class="fr-riga">${frecciaCartello(f.dir, { h: 34 })}<div><b>${esc(f.codice)}: ${DIR_LABEL[f.dir]}</b><span>${f.verso === 'andata' ? 'Andata, ' : f.verso === 'ritorno' ? 'Ritorno, ' : ''}km ${fmtKm(f.km)}${f.ex ? `. Dal piano: ${esc(f.ex)}` : ''}${f.origine === 'proposta' ? '. Freccia proposta: verificare il senso' : ''}</span></div></div>`).join('')}
         <div class="coord"><div id="qr-${esc(s.id)}" class="qr"></div><div><span class="et">Coordinate</span><b>${fmtCoord(s.lat)}, ${fmtCoord(s.lon)}</b><a href="https://www.google.com/maps/search/?api=1&query=${s.lat},${s.lon}">Apri in Google Maps</a></div></div>

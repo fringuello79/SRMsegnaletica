@@ -48,6 +48,11 @@ class StoreLocale extends Emitter {
     m[id] = { ...m[id], ...patch, aggiornato: Date.now(), da: this.nome };
     this._scrivi('segnali', m); if (ev) this._evento(id, ev); this._notifica();
   }
+  async salvaMolti(lista, ev) {
+    const m = this._leggi('segnali', {});
+    lista.forEach(({ id, patch }) => { if (m[id]) m[id] = { ...m[id], ...patch, aggiornato: Date.now(), da: this.nome }; });
+    this._scrivi('segnali', m); if (ev) this._evento('*', ev); this._notifica();
+  }
   async crea(seg, ev) {
     const m = this._leggi('segnali', {});
     m[seg.id] = { ...seg, aggiornato: Date.now(), da: this.nome };
@@ -121,6 +126,11 @@ class StoreFirebase extends Emitter {
     const e = ev ? this._ev(id, ev) : null;
     // con la rete assente le promesse restano in attesa: non blocchiamo l'interfaccia
     attendiBreve(p); if (e) attendiBreve(e);
+  }
+  async salvaMolti(lista, ev) {
+    const { fs } = this; const b = fs.writeBatch(this.db);
+    lista.forEach(({ id, patch }) => b.update(this.ref('segnali', id), { ...pulisci(patch), aggiornato: fs.serverTimestamp(), da: this.nome }));
+    attendiBreve(b.commit()); if (ev) attendiBreve(this._ev('*', ev));
   }
   async crea(seg, ev) {
     const { fs } = this;

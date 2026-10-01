@@ -13,6 +13,9 @@ const LS = {
   set: (k, v) => { try { localStorage.setItem('srmseg:' + k, v); } catch {} },
 };
 
+// numero visualizzato del paletto (può differire dall'identificativo interno dopo una rinumerazione)
+const N = s => s?.num || s?.id || '';
+const numDi = id => { const s = S.segnali.find(x => x.id === id); return s ? N(s) : id; };
 const S = {
   traccia: null, piano: null, poi: [], meta: {},
   segnali: [], eventi: [], volontari: [], daServer: false,
@@ -178,7 +181,7 @@ function iconaSegnale(s) {
   const fr = (s.frecce || []).map(f => frecciaMappa(S.traccia.direzioneDopo(f.km), { size: doppio ? 34 : 46, sbiadita: s.stato === 'rimosso' })).join('');
   return L.divIcon({
     className: 'mk-segnale', iconSize: [64, 64], iconAnchor: [32, 32],
-    html: `<div class="mk st-${s.stato} ${doppio ? 'doppio' : ''} ${sel ? 'sel' : ''} ${trasc ? 'trascina' : ''}" style="--c:${st.colore}">${fr}${doppio ? '<span class="ar a">A</span><span class="ar r">R</span>' : ''}<span class="tag">${esc(s.id)}<i aria-label="${st.label}">${st.icona}</i></span></div>`,
+    html: `<div class="mk st-${s.stato} ${doppio ? 'doppio' : ''} ${sel ? 'sel' : ''} ${trasc ? 'trascina' : ''}" style="--c:${st.colore}">${fr}${doppio ? '<span class="ar a">A</span><span class="ar r">R</span>' : ''}<span class="tag">${esc(N(s))}<i aria-label="${st.label}">${st.icona}</i></span></div>`,
   });
 }
 
@@ -189,7 +192,7 @@ function disegnaSegnali() {
     let m = markers.get(s.id);
     if (S.sposta?.id === s.id && m) { m.setIcon(iconaSegnale(s)); continue; }
     if (!m) {
-      m = L.marker([s.lat, s.lon], { icon: iconaSegnale(s), title: s.id, riseOnHover: true });
+      m = L.marker([s.lat, s.lon], { icon: iconaSegnale(s), title: N(s), riseOnHover: true });
       m.on('click', () => seleziona(s.id));
       m.on('drag', anteprimaSposta);
       m.on('dragend', anteprimaSposta);
@@ -204,7 +207,7 @@ function disegnaSegnali() {
     if (!s.suggerimento || s.stato !== 'da_verificare') continue;
     const g = s.suggerimento;
     L.circleMarker([g.lat, g.lon], { pane: 'svolte', radius: 11, color: '#FF8102', weight: 3, dashArray: '4 4', fillColor: '#fff', fillOpacity: .35 })
-      .bindTooltip(`Svolta della traccia per ${s.id} (km ${fmtKm(g.km)})`, { className: 'tip', direction: 'top' })
+      .bindTooltip(`Svolta della traccia per ${N(s)} (km ${fmtKm(g.km)})`, { className: 'tip', direction: 'top' })
       .on('click', () => seleziona(s.id)).addTo(layers.svolte);
   }
 }
@@ -279,6 +282,7 @@ function collegaInterfaccia() {
   $('#btnGpx').addEventListener('click', esportaGpx);
   $('#btnCsv').addEventListener('click', esportaCsv);
   $('#btnGuida').addEventListener('click', () => { $('#dlgMenu').close(); $('#dlgGuida').showModal(); });
+  $('#btnRinumera').addEventListener('click', () => { $('#dlgMenu').close(); apriRinumera(); });
   $('#btnCambiaNome').addEventListener('click', async () => { $('#dlgMenu').close(); LS.set('nome', ''); location.reload(); });
   $('#btnOffline').addEventListener('click', scaricaOffline);
   document.addEventListener('focusout', e => { if (e.target.matches?.('textarea.nota') && rinviaRender) { rinviaRender = false; setTimeout(renderScheda, 50); } });
@@ -367,7 +371,7 @@ function renderSegnale() {
   const storia = S.eventi.filter(e => e.segnale === s.id).slice(0, 30);
   el.innerHTML = `
     <div class="seg-testa">
-      <div class="seg-num">${esc(s.id)}</div>
+      <div class="seg-num">${esc(N(s))}</div>
       <div class="seg-info"><div class="km">km ${fmtKm(s.km)}${s.doppio ? ' e ' + fmtKm(Math.max(...s.frecce.map(f => f.km))) : ''}</div><div class="det">Sentiero ${esc(sent)}, ${ele} m</div>${chip(st)}</div>
       <button class="seg-chiudi" data-az="chiudi" aria-label="Chiudi la scheda">×</button>
     </div>
@@ -402,7 +406,7 @@ function renderSegnale() {
         <label class="campo">Correggi lo stato
           <select id="cambiaStato" class="btn">${ORDINE_STATI.map(k => `<option value="${k}" ${k === st ? 'selected' : ''}>${STATI[k].label}</option>`).join('')}</select>
         </label>
-        <button class="btn btn-pericolo btn-piccolo" data-az="elimina">Elimina il segnale ${esc(s.id)}</button>
+        <button class="btn btn-pericolo btn-piccolo" data-az="elimina">Elimina il segnale ${esc(N(s))}</button>
       </div>
     </div>`;
   el.querySelectorAll('[data-az]').forEach(b => b.addEventListener('click', () => azione(b.dataset.az, s)));
@@ -412,11 +416,11 @@ function renderSegnale() {
   aggiornaDistanza();
 }
 
-const AZIONI = { piano_caricato: 'Piano caricato', spostato: 'Spostato', messo_qui: 'Portato sulla posizione GPS', verificato: 'Posizione confermata', posato: 'Posato', rimosso: 'Rimosso', stato: 'Stato corretto', freccia: 'Senso della freccia cambiato', nota: 'Nota aggiornata', creato: 'Aggiunto', eliminato: 'Eliminato' };
+const AZIONI = { piano_caricato: 'Piano caricato', rinumerati: 'Paletti rinumerati in ordine di km', spostato: 'Spostato', messo_qui: 'Portato sulla posizione GPS', verificato: 'Posizione confermata', posato: 'Posato', rimosso: 'Rimosso', stato: 'Stato corretto', freccia: 'Senso della freccia cambiato', nota: 'Nota aggiornata', creato: 'Aggiunto', eliminato: 'Eliminato' };
 function rigaStoria(e) {
   const t = quando(e);
   const d = new Date(t).toLocaleString('it-IT', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
-  return `<li><time>${d}</time><span><b>${esc(AZIONI[e.azione] || e.azione)}</b>${e.segnale && e.segnale !== '*' && S.scheda !== 'segnale' ? ' ' + esc(e.segnale) : ''}, ${esc(e.chi || '')}${e.note ? `. ${esc(e.note)}` : ''}</span>${e.foto ? `<img src="${e.foto}" alt="Foto di ${esc(e.chi || '')}">` : ''}</li>`;
+  return `<li><time>${d}</time><span><b>${esc(AZIONI[e.azione] || e.azione)}</b>${e.segnale && e.segnale !== '*' && S.scheda !== 'segnale' ? ' ' + esc(numDi(e.segnale)) : ''}, ${esc(e.chi || '')}${e.note ? `. ${esc(e.note)}` : ''}</span>${e.foto ? `<img src="${e.foto}" alt="Foto di ${esc(e.chi || '')}">` : ''}</li>`;
 }
 
 function renderRiepilogo() {
@@ -430,7 +434,7 @@ function renderRiepilogo() {
   if (S.me && daFare.length) prossimo = daFare.reduce((a, b) => dist([S.me.lat, S.me.lon], [a.lat, a.lon]) < dist([S.me.lat, S.me.lon], [b.lat, b.lon]) ? a : b);
   return `
     <div class="riepilogo">${ORDINE_STATI.map(k => `<div style="--c:${STATI[k].colore}"><b>${c[k] || 0}</b><span>${STATI[k].breve}</span></div>`).join('')}</div>
-    ${prossimo ? `<button class="prossimo" data-sel="${prossimo.id}">${frecciaCartello(prossimo.frecce[0].dir, { h: 30 })}<span><b>${S.me ? 'Il più vicino da fare' : 'Il primo da fare'}: ${esc(prossimo.id)}</b><br><span class="dlg-nota">km ${fmtKm(prossimo.km)}, ${STATI[prossimo.stato].label.toLowerCase()}${S.me ? `, a ${fmtDist(dist([S.me.lat, S.me.lon], [prossimo.lat, prossimo.lon]))}` : ''}</span></span></button>` : '<p class="vuoto">Tutti i segnali sono posati o rimossi.</p>'}
+    ${prossimo ? `<button class="prossimo" data-sel="${prossimo.id}">${frecciaCartello(prossimo.frecce[0].dir, { h: 30 })}<span><b>${S.me ? 'Il più vicino da fare' : 'Il primo da fare'}: ${esc(N(prossimo))}</b><br><span class="dlg-nota">km ${fmtKm(prossimo.km)}, ${STATI[prossimo.stato].label.toLowerCase()}${S.me ? `, a ${fmtDist(dist([S.me.lat, S.me.lon], [prossimo.lat, prossimo.lon]))}` : ''}</span></span></button>` : '<p class="vuoto">Tutti i segnali sono posati o rimossi.</p>'}
     <p class="dlg-nota" style="margin-top:14px">Tocca una freccia sulla mappa per aprirne la scheda. Le frecce puntano dove deve andare il corridore.</p>`;
 }
 function legaRiepilogo(el) {
@@ -457,7 +461,7 @@ function renderElenco() {
   el.innerHTML = `<div class="filtri" role="group" aria-label="Filtra i segnali">${filtri.map(([k, l]) => `<button data-f="${k}" class="${S.filtro === k ? 'on' : ''}" aria-pressed="${S.filtro === k}">${l}</button>`).join('')}</div>
     ${S.filtro === 'vicini' && !S.me ? '<p class="dlg-nota">Attendo la tua posizione GPS…</p>' : ''}
     <ul class="righe">${lista.map(s => `<li><button data-sel="${s.id}">
-      <span class="n">${esc(s.id)}</span>
+      <span class="n">${esc(N(s))}</span>
       <span class="d"><b>km ${fmtKm(s.km)}</b> ${s.frecce.map(f => `${f.verso === 'ritorno' ? 'rit.' : ''} ${DIR_LABEL[f.dir]}`).join(', ')}<br>Sentiero ${esc(S.traccia.sentiero(s.km))}${S.me ? `, a ${fmtDist(dist([S.me.lat, S.me.lon], [s.lat, s.lon]))}` : ''}${s.nota ? ', con nota' : ''}</span>
       ${chip(s.stato)}</button></li>`).join('') || '<li class="vuoto">Nessun segnale in questo filtro.</li>'}</ul>`;
   el.querySelectorAll('[data-f]').forEach(b => b.addEventListener('click', () => { S.filtro = b.dataset.f; renderElenco(); }));
@@ -522,8 +526,8 @@ async function azione(az, s) {
       await S.store.salva(s.id, { nota: v }, { azione: 'nota', note: v.slice(0, 120) }); toast('Nota salvata'); break;
     }
     case 'elimina':
-      if (!confirm(`Eliminare ${s.id}? Resta comunque nella storia delle azioni.`)) return;
-      S.sel = null; await S.store.elimina(s.id, { azione: 'eliminato', note: `${s.id} al km ${fmtKm(s.km)}` }); toast(`${s.id} eliminato`); break;
+      if (!confirm(`Eliminare ${N(s)}? Resta comunque nella storia delle azioni.`)) return;
+      S.sel = null; await S.store.elimina(s.id, { azione: 'eliminato', note: `${N(s)} al km ${fmtKm(s.km)}` }); toast(`${N(s)} eliminato`); break;
   }
 }
 
@@ -567,7 +571,7 @@ async function applicaPosizione(s, lat, lon, tipo, da, dove = '', extra = {}, ev
   const mosso = dist([da.lat, da.lon], [lat, lon]);
   await S.store.salva(s.id, { lat: +lat.toFixed(7), lon: +lon.toFixed(7), km, frecce, ...extra },
     { azione: tipo, note: `${Math.round(mosso)} m ${dove}`.trim(), lat, lon, ...evExtra });
-  toast(`${s.id} spostato di ${fmtDist(mosso)}`);
+  toast(`${N(s)} spostato di ${fmtDist(mosso)}`);
 }
 
 function mettiQui(s) {
@@ -581,7 +585,8 @@ const definiti = o => Object.fromEntries(Object.entries(o).filter(([, v]) => v !
 function apriAzione(s, tipo) {
   const d = $('#dlgAzione');
   fotoCorrente = null; $('#azioneAnteprima').hidden = true; $('#azioneFoto').value = ''; $('#azioneNota').value = '';
-  const titoli = { mettiQui: `Porta ${s.id} dove sei ora`, verificato: `Conferma la posizione di ${s.id}`, posato: `${s.id} posato`, rimosso: `${s.id} rimosso` };
+  const n = N(s);
+  const titoli = { mettiQui: `Porta ${n} dove sei ora`, verificato: `Conferma la posizione di ${n}`, posato: `${n} posato`, rimosso: `${n} rimosso` };
   const ok = { mettiQui: 'Sposta qui', verificato: 'Conferma posizione', posato: 'Segna come posato', rimosso: 'Segna come rimosso' };
   $('#azioneTitolo').textContent = titoli[tipo]; $('#azioneOk').textContent = ok[tipo];
   let corpo = '';
@@ -610,7 +615,7 @@ function apriAzione(s, tipo) {
     } else {
       await S.store.salva(s.id, patch, { azione: tipo, ...ev });
     }
-    toast(`${s.id}: ${STATI[tipo].label.toLowerCase()}`);
+    toast(`${N(s)}: ${STATI[tipo].label.toLowerCase()}`);
   };
 }
 $('#azioneFoto')?.addEventListener('change', async e => {
@@ -635,16 +640,22 @@ async function cambiaDir(s, i, d) {
 async function correggiStato(s, nuovo) {
   if (nuovo === s.stato) return;
   await S.store.salva(s.id, { stato: nuovo }, { azione: 'stato', note: `${STATI[s.stato].label} → ${STATI[nuovo].label}` });
-  toast(`${s.id}: ${STATI[nuovo].label.toLowerCase()}`);
+  toast(`${N(s)}: ${STATI[nuovo].label.toLowerCase()}`);
 }
 
 /* =========================================================== nuovo segnale */
-function prossimoId() {
-  const n = Math.max(0, ...S.segnali.map(s => parseInt(s.id.replace(/\D/g, ''), 10) || 0), ...S.piano.segnali.map(s => parseInt(s.id.slice(1), 10)));
+const numero = x => parseInt(String(x).replace(/\D/g, ''), 10) || 0;
+function prossimoNum() {
+  const n = Math.max(0, ...S.segnali.map(s => numero(N(s))), ...S.piano.segnali.map(s => numero(s.id)));
   return 'S' + String(n + 1).padStart(2, '0');
 }
+// identificativo interno libero: il numero stesso, oppure numero + suffisso se già usato da un paletto rinumerato
+function docLibero(num) {
+  const usati = new Set(S.segnali.map(s => s.id));
+  return usati.has(num) ? `${num}-${Date.now().toString(36)}` : num;
+}
 function apriNuovo() {
-  const d = $('#dlgNuovo'); const id = prossimoId();
+  const d = $('#dlgNuovo'); const id = prossimoNum();
   $('#nuovoId').textContent = id;
   $('#mirino').hidden = false;
   const aggiornaInfo = () => {
@@ -676,9 +687,34 @@ function apriNuovo() {
       frecce.push({ codice: id + '-A', verso: 'andata', km: +kmA.toFixed(3), dir: dir1, origine: 'campo' });
       frecce.push({ codice: id + '-R', verso: 'ritorno', km: +kmR.toFixed(3), dir: dir2, origine: 'campo' });
     } else frecce.push({ codice: id, verso: 'unico', km: +pr.km.toFixed(3), dir: dir1, origine: 'campo' });
-    const seg = { id, lat: +p[0].toFixed(7), lon: +p[1].toFixed(7), ele: Math.round(S.traccia.at(pr.km)[2]), km: Math.min(...frecce.map(f => f.km)), frecce, doppio: frecce.length > 1, suggerimento: null, stato: 'da_verificare', origine: 'campo' };
+    const seg = { id: docLibero(id), num: id, lat: +p[0].toFixed(7), lon: +p[1].toFixed(7), ele: Math.round(S.traccia.at(pr.km)[2]), km: Math.min(...frecce.map(f => f.km)), frecce, doppio: frecce.length > 1, suggerimento: null, stato: 'da_verificare', origine: 'campo' };
     await S.store.crea(seg, { azione: 'creato', note: `km ${fmtKm(seg.km)}`, lat: seg.lat, lon: seg.lon });
-    toast(`${id} aggiunto`); seleziona(id);
+    toast(`${id} aggiunto`); seleziona(seg.id);
+  };
+}
+
+/* =========================================================== rinumerazione */
+function pianoRinumerazione() {
+  return [...S.segnali].sort((a, b) => a.km - b.km)
+    .map((s, i) => ({ s, vecchio: N(s), nuovo: 'S' + String(i + 1).padStart(2, '0') }));
+}
+const codiciFrecce = (s, num) => s.frecce.map(f => ({ ...f, codice: num + (f.verso === 'andata' ? '-A' : f.verso === 'ritorno' ? '-R' : '') }));
+function apriRinumera() {
+  const d = $('#dlgRinumera');
+  const cambi = pianoRinumerazione().filter(x => x.vecchio !== x.nuovo);
+  const posati = cambi.filter(x => x.s.stato === 'posato' || x.s.stato === 'rimosso');
+  $('#rinumeraCorpo').innerHTML = cambi.length
+    ? `<p class="dlg-testo">I paletti prendono i numeri in ordine di chilometro. Cambiano ${cambi.length} numeri, con i codici delle loro frecce; la storia di ogni paletto resta collegata.</p>
+       ${posati.length ? `<p class="gps-stato debole">Attenzione: ${posati.map(x => x.vecchio).join(', ')} ${posati.length > 1 ? 'risultano già posati' : 'risulta già posato'}. Il numero scritto sul paletto non corrisponderà più.</p>` : ''}
+       <ul class="storia">${cambi.map(x => `<li><time>km ${fmtKm(x.s.km)}</time><span><b>${esc(x.vecchio)}</b> diventa <b>${esc(x.nuovo)}</b></span></li>`).join('')}</ul>`
+    : '<p class="dlg-testo">I paletti sono già numerati in ordine di chilometro.</p>';
+  $('#rinumeraOk').hidden = !cambi.length;
+  d.showModal();
+  d.onclose = async () => {
+    if (d.returnValue !== 'ok' || !cambi.length) return;
+    await S.store.salvaMolti(cambi.map(x => ({ id: x.s.id, patch: { num: x.nuovo, frecce: codiciFrecce(x.s, x.nuovo) } })),
+      { azione: 'rinumerati', note: cambi.map(x => `${x.vecchio}→${x.nuovo}`).join(', ') });
+    toast(`${cambi.length} paletti rinumerati`);
   };
 }
 
@@ -766,13 +802,13 @@ function scarica(nome, testo, tipo) {
   setTimeout(() => URL.revokeObjectURL(a.href), 2000);
 }
 function esportaGpx() {
-  const w = S.segnali.map(s => `<wpt lat="${s.lat}" lon="${s.lon}"><ele>${Math.round(S.traccia.at(s.km)[2])}</ele><name>${s.id}</name><desc>${s.frecce.map(f => `${f.codice} ${DIR_LABEL[f.dir]} km ${fmtKm(f.km)}`).join('; ')}. ${STATI[s.stato].label}${s.nota ? '. ' + esc(s.nota) : ''}</desc><sym>Flag, Red</sym></wpt>`).join('\n');
+  const w = S.segnali.map(s => `<wpt lat="${s.lat}" lon="${s.lon}"><ele>${Math.round(S.traccia.at(s.km)[2])}</ele><name>${esc(N(s))}</name><desc>${s.frecce.map(f => `${f.codice} ${DIR_LABEL[f.dir]} km ${fmtKm(f.km)}`).join('; ')}. ${STATI[s.stato].label}${s.nota ? '. ' + esc(s.nota) : ''}</desc><sym>Flag, Red</sym></wpt>`).join('\n');
   scarica('segnali-srm2026.gpx', `<?xml version="1.0" encoding="UTF-8"?>\n<gpx version="1.1" creator="Segnaletica SRM 2026" xmlns="http://www.topografix.com/GPX/1/1">\n<metadata><name>Segnaletica SRM 2026</name></metadata>\n${w}\n</gpx>`, 'application/gpx+xml');
 }
 function esportaCsv() {
   const r = [['Paletto', 'Frecce', 'km', 'Lat', 'Lon', 'Quota', 'Sentiero', 'Stato', 'Confermato da', 'Confermato il', 'Posato da', 'Posato il', 'Rimosso da', 'Rimosso il', 'Nota']];
   const dt = t => t ? new Date(t).toLocaleString('it-IT') : '';
-  S.segnali.forEach(s => r.push([s.id, s.frecce.map(f => `${f.codice} ${f.dir}`).join(' / '), fmtKm(s.km), s.lat, s.lon, Math.round(S.traccia.at(s.km)[2]), S.traccia.sentiero(s.km), STATI[s.stato].label, s.verificatoDa || '', dt(s.verificatoIl), s.posatoDa || '', dt(s.posatoIl), s.rimossoDa || '', dt(s.rimossoIl), s.nota || '']));
+  S.segnali.forEach(s => r.push([N(s), s.frecce.map(f => `${f.codice} ${f.dir}`).join(' / '), fmtKm(s.km), s.lat, s.lon, Math.round(S.traccia.at(s.km)[2]), S.traccia.sentiero(s.km), STATI[s.stato].label, s.verificatoDa || '', dt(s.verificatoIl), s.posatoDa || '', dt(s.posatoIl), s.rimossoDa || '', dt(s.rimossoIl), s.nota || '']));
   scarica('inventario-segnali-srm2026.csv', '﻿' + r.map(x => x.map(v => `"${String(v).replace(/"/g, '""')}"`).join(';')).join('\n'), 'text/csv');
 }
 
