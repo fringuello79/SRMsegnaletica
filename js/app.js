@@ -105,10 +105,10 @@ function creaMappa() {
   L.control.scale({ imperial: false, position: 'topleft' }).addTo(map);
   layers.base = {
     satellite: L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', { maxZoom: 20, maxNativeZoom: 19, attribution: 'Immagini © Esri, Maxar, Earthstar Geographics' }),
-    topo: L.tileLayer('https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png', { maxZoom: 20, maxNativeZoom: 17, subdomains: 'abc', attribution: '© OpenTopoMap (CC-BY-SA), dati © OpenStreetMap' }),
-    osm: L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 20, maxNativeZoom: 19, attribution: '© OpenStreetMap' }),
+    topo: L.tileLayer('https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png', { maxZoom: 20, maxNativeZoom: 17, subdomains: 'abc', className: 'tile-attenuata', attribution: '© OpenTopoMap (CC-BY-SA), dati © OpenStreetMap' }),
+    osm: L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 20, maxNativeZoom: 19, className: 'tile-attenuata', attribution: '© OpenStreetMap' }),
   };
-  layers.cai = L.tileLayer('https://tile.waymarkedtrails.org/hiking/{z}/{x}/{y}.png', { maxZoom: 20, maxNativeZoom: 18, opacity: .85, attribution: 'Sentieri © waymarkedtrails.org' });
+  layers.cai = L.tileLayer('https://tile.waymarkedtrails.org/hiking/{z}/{x}/{y}.png', { maxZoom: 20, maxNativeZoom: 18, opacity: .85, className: 'tile-sentieri', attribution: 'Sentieri © waymarkedtrails.org' });
   const base = LS.get('base', 'satellite');
   (layers.base[base] || layers.base.satellite).addTo(map);
   if (LS.get('ov:cai', '1') === '1') layers.cai.addTo(map);
@@ -825,30 +825,52 @@ function apriLivelli() {
   d.showModal();
 }
 
-async function caricaBivi() {
+// Sentieri e bivi da OpenStreetMap: più server con tempo massimo, poi i dati restano sul telefono (anche senza campo)
+const OSM_CACHE = 'srmseg-osm', OSM_CHIAVE = './osm-sentieri-v1.json';
+const OVERPASS = ['https://overpass-api.de/api/interpreter', 'https://overpass.private.coffee/api/interpreter',
+  'https://maps.mail.ru/osm/tools/overpass/api/interpreter', 'https://overpass.kumi.systems/api/interpreter'];
+async function datiOSM() {
+  try { const hit = await (await caches.open(OSM_CACHE)).match(OSM_CHIAVE); if (hit) return await hit.json(); } catch {}
   const b = L.latLngBounds(S.traccia.latlngs()).pad(0.08);
   const q = `[out:json][timeout:40];way["highway"~"^(path|track|footway|bridleway|steps|unclassified|service|residential|tertiary|secondary|cycleway|living_street|pedestrian)$"](${b.getSouth()},${b.getWest()},${b.getNorth()},${b.getEast()});out geom;`;
-  toast('Scarico sentieri e bivi da OpenStreetMap…', 4000);
-  let dati = null;
-  for (const url of ['https://overpass-api.de/api/interpreter', 'https://overpass.kumi.systems/api/interpreter']) {
-    try { const r = await fetch(url, { method: 'POST', body: 'data=' + encodeURIComponent(q) }); if (r.ok) { dati = await r.json(); break; } } catch {}
+  toast('Scarico sentieri e bivi da OpenStreetMap…', 6000);
+  for (const url of OVERPASS) {
+    const ctl = new AbortController(); const t = setTimeout(() => ctl.abort(), 25000);
+    try {
+      const r = await fetch(url, { method: 'POST', body: 'data=' + encodeURIComponent(q), signal: ctl.signal });
+      if (!r.ok) continue;
+      const grezzi = await r.json();
+      const uso = new Map(), pos = new Map(), vie = [];
+      for (const w of grezzi.elements || []) {
+        if (!w.geometry) continue;
+        vie.push({ s: w.tags?.highway === 'path' ? 1 : 0, p: w.geometry.map(g => [+g.lat.toFixed(5), +g.lon.toFixed(5)]) });
+        w.nodes?.forEach((n, i) => { uso.set(n, (uso.get(n) || 0) + 1); pos.set(n, w.geometry[i]); });
+      }
+      const bivi = [];
+      for (const [n, c] of uso) {
+        if (c < 2) continue;
+        const g = pos.get(n); const pr = S.traccia.proietta(g.lat, g.lon);
+        if (pr.d <= 25) bivi.push({ lat: +g.lat.toFixed(6), lon: +g.lon.toFixed(6), km: +pr.km.toFixed(3) });
+      }
+      const dati = { vie, bivi, scaricato: Date.now() };
+      try { await (await caches.open(OSM_CACHE)).put(OSM_CHIAVE, new Response(JSON.stringify(dati), { headers: { 'Content-Type': 'application/json' } })); } catch {}
+      return dati;
+    } catch { /* server lento o non raggiungibile: si prova il successivo */ }
+    finally { clearTimeout(t); }
   }
-  if (!dati) { toast('OpenStreetMap non risponde: riprova più tardi.', 5000); return; }
+  return null;
+}
+async function caricaBivi() {
+  const dati = await datiOSM();
+  if (!dati) { toast('OpenStreetMap non risponde: riprova tra qualche minuto.', 5000); return; }
   layers.bivi.clearLayers();
-  const uso = new Map(), pos = new Map();
-  for (const w of dati.elements) {
-    if (!w.geometry) continue;
-    L.polyline(w.geometry.map(g => [g.lat, g.lon]), { pane: 'bivi', color: '#ffe082', weight: 2.5, opacity: .9, dashArray: w.tags?.highway === 'path' ? '6 5' : null, interactive: false }).addTo(layers.bivi);
-    w.nodes?.forEach((n, i) => { uso.set(n, (uso.get(n) || 0) + 1); pos.set(n, w.geometry[i]); });
+  for (const v of dati.vie) {
+    L.polyline(v.p, { pane: 'bivi', color: '#9fd8ff', weight: 2.5, opacity: .9, dashArray: v.s ? '6 5' : null, interactive: false }).addTo(layers.bivi);
   }
-  S.bivi = [];
-  for (const [n, c] of uso) {
-    if (c < 2) continue;
-    const g = pos.get(n); const pr = S.traccia.proietta(g.lat, g.lon);
-    if (pr.d > 25) continue;
-    S.bivi.push({ lat: g.lat, lon: g.lon, km: pr.km });
+  S.bivi = dati.bivi;
+  for (const g of S.bivi) {
     L.marker([g.lat, g.lon], { pane: 'bivi', icon: L.divIcon({ className: 'mk-bivio', iconSize: [14, 14], iconAnchor: [7, 7], html: '<div></div>' }) })
-      .bindTooltip(`Bivio OSM, km ${fmtKm(pr.km)}`, { className: 'tip' }).addTo(layers.bivi);
+      .bindTooltip(`Bivio OSM, km ${fmtKm(g.km)}`, { className: 'tip' }).addTo(layers.bivi);
   }
   toast(`${S.bivi.length} bivi lungo la traccia`); renderScheda();
 }
