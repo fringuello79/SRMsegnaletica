@@ -50,21 +50,21 @@ Per rigenerare i dati dalla traccia: `python3 tools/genera_piano.py`. Usa solo d
 2. In *Build and deployment* scegli **Deploy from a branch**, ramo `main`, cartella `/ (root)`, e salva.
 3. Dopo un paio di minuti la mappa è su https://fringuello79.github.io/SRMsegnaletica/
 
-Finché `firebase-config.js` contiene `null`, lo strumento gira in **modalità prova**: tutto funziona, ma i dati restano sul singolo telefono.
+Se `firebase-config.js` contiene `null`, lo strumento gira in **modalità prova**: tutto funziona, ma i dati restano sul singolo telefono.
 
-## Condivisione tra volontari con Firebase (gratuito)
+## Condivisione tra volontari con Firebase
 
-Il piano gratuito Spark basta e avanza: 50.000 letture e 20.000 scritture al giorno.
+**Già configurato** il 1° ottobre 2026 sul progetto Firebase `srm-segnaletica` dell'account del club (piano gratuito Spark):
+- accesso anonimo attivo;
+- database Firestore a Milano (`europe-west8`) con le regole di `firestore.rules`;
+- dominio `fringuello79.github.io` autorizzato;
+- configurazione web in `firebase-config.js`.
 
-1. Vai su https://console.firebase.google.com, **Crea un progetto** (es. `srm-segnaletica`). Google Analytics non serve.
-2. **Build → Authentication → Inizia → Metodo di accesso → Anonimo → Abilita → Salva.**
-3. **Build → Firestore Database → Crea database.** Posizione `europe-west8 (Milano)`, avvio in **modalità produzione**.
-4. **Firestore → Regole:** cancella tutto, incolla il contenuto di `firestore.rules` di questo repository e premi **Pubblica**.
-5. **Impostazioni progetto (ingranaggio) → Generali → Le tue app → icona `</>` (Web).** Nome `segnaletica`, *senza* Firebase Hosting. Copia l'oggetto `firebaseConfig` che compare.
-6. Apri `firebase-config.js`, sostituisci `null` con l'oggetto copiato e fai commit. Puoi anche mandarlo a Claude: non è un segreto, la protezione la fanno le regole e il codice squadra.
-7. **Authentication → Impostazioni → Domini autorizzati:** aggiungi `fringuello79.github.io`.
-8. Scegli un **codice squadra** di almeno 10 caratteri, per esempio `MAGLIO-2026-K7Q4`. Mandalo ai volontari insieme al link: `https://fringuello79.github.io/SRMsegnaletica/#squadra=MAGLIO-2026-K7Q4`. Chi apre il link entra direttamente nella squadra; chi non ha il codice non vede nulla.
-9. Al primo accesso con il codice, la scheda «Segnale» propone **Carica il piano dei segnali**: premilo una volta sola.
+Il **codice squadra non è scritto in questo repository**, perché il repository è pubblico: lo distribuisce Ale insieme al link `https://fringuello79.github.io/SRMsegnaletica/#squadra=CODICE`. Chi apre il link entra direttamente nella squadra; chi non ha il codice non vede nulla.
+
+Per cambiare le regole: Console Firebase → Firestore Database → Regole, incolla `firestore.rules` e premi **Pubblica**.
+
+Per usare un nuovo codice squadra (per esempio nel 2027): basta inventarne uno di almeno 10 caratteri e premere **Carica il piano dei segnali** al primo accesso.
 
 ## Come si usa sul percorso
 
