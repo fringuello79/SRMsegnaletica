@@ -2,8 +2,8 @@
 
 Strumento di campo per **verificare, posare e rimuovere** la segnaletica temporanea della Skyrace del Maglio (18 ottobre 2026), nel rispetto del disciplinare del Parco Sirente Velino.
 
-- **Mappa:** https://fringuello79.github.io/srmsegnaletica/
-- **Report per i volontari** (stampabile in PDF): https://fringuello79.github.io/srmsegnaletica/report.html
+- **Mappa:** https://fringuello79.github.io/SRMsegnaletica/
+- **Report per i volontari** (stampabile in PDF): https://fringuello79.github.io/SRMsegnaletica/report.html
 
 Funziona dal telefono, anche senza campo: le modifiche restano sul telefono e partono appena torna la rete.
 
@@ -48,7 +48,7 @@ Per rigenerare i dati dalla traccia: `python3 tools/genera_piano.py`. Usa solo d
 
 1. Su GitHub apri **Settings → Pages**.
 2. In *Build and deployment* scegli **Deploy from a branch**, ramo `main`, cartella `/ (root)`, e salva.
-3. Dopo un paio di minuti la mappa è su https://fringuello79.github.io/srmsegnaletica/
+3. Dopo un paio di minuti la mappa è su https://fringuello79.github.io/SRMsegnaletica/
 
 Finché `firebase-config.js` contiene `null`, lo strumento gira in **modalità prova**: tutto funziona, ma i dati restano sul singolo telefono.
 
@@ -63,7 +63,7 @@ Il piano gratuito Spark basta e avanza: 50.000 letture e 20.000 scritture al gio
 5. **Impostazioni progetto (ingranaggio) → Generali → Le tue app → icona `</>` (Web).** Nome `segnaletica`, *senza* Firebase Hosting. Copia l'oggetto `firebaseConfig` che compare.
 6. Apri `firebase-config.js`, sostituisci `null` con l'oggetto copiato e fai commit. Puoi anche mandarlo a Claude: non è un segreto, la protezione la fanno le regole e il codice squadra.
 7. **Authentication → Impostazioni → Domini autorizzati:** aggiungi `fringuello79.github.io`.
-8. Scegli un **codice squadra** di almeno 10 caratteri, per esempio `MAGLIO-2026-K7Q4`. Mandalo ai volontari insieme al link: `https://fringuello79.github.io/srmsegnaletica/#squadra=MAGLIO-2026-K7Q4`. Chi apre il link entra direttamente nella squadra; chi non ha il codice non vede nulla.
+8. Scegli un **codice squadra** di almeno 10 caratteri, per esempio `MAGLIO-2026-K7Q4`. Mandalo ai volontari insieme al link: `https://fringuello79.github.io/SRMsegnaletica/#squadra=MAGLIO-2026-K7Q4`. Chi apre il link entra direttamente nella squadra; chi non ha il codice non vede nulla.
 9. Al primo accesso con il codice, la scheda «Segnale» propone **Carica il piano dei segnali**: premilo una volta sola.
 
 ## Come si usa sul percorso
