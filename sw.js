@@ -1,5 +1,5 @@
 // Service worker: l'app e la mappa restano disponibili anche senza campo
-const VERSIONE = 'srmseg-app-v6';
+const VERSIONE = 'srmseg-app-v7';
 const TILES = 'srmseg-tiles';
 const LIB = 'srmseg-lib';
 const APP = ['./', 'index.html', 'report.html', 'css/app.css', 'css/report.css', 'js/app.js', 'js/geo.js', 'js/frecce.js', 'js/store.js', 'js/report.js',
@@ -29,7 +29,8 @@ self.addEventListener('fetch', e => {
 async function primaCache(req, nome) {
   const c = await caches.open(nome);
   const hit = await c.match(req.url);
-  if (hit) return hit;
+  // una copia "opaca" non va bene per chi deve leggere i pixel (sentieri ricolorati): la riscarichiamo
+  if (hit && !(hit.type === 'opaque' && req.mode === 'cors')) return hit;
   try { const r = await fetch(req); if (r.ok || r.type === 'opaque') c.put(req.url, r.clone()); return r; }
   catch { return hit || Response.error(); }
 }

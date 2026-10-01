@@ -263,8 +263,7 @@ textarea.nota { width: 100%; min-height: 64px; border: 1.5px solid var(--linea);
 .mk-bivio div { width: 14px; height: 14px; transform: rotate(45deg); background: #ffd54f; border: 2px solid var(--bosco); }
 
 .leaflet-container { font-family: var(--font-testo); }
-/* l'arancione è riservato al percorso: i sentieri segnati diventano blu, le mappe di base perdono gli arancioni accesi */
-.tile-sentieri { filter: grayscale(1) sepia(1) hue-rotate(165deg) saturate(2.8) brightness(1.2); }
+/* l'arancione è riservato al percorso: i sentieri segnati sono ricolorati in rosso scuro in app.js, le mappe di base perdono gli arancioni accesi */
 .tile-attenuata { filter: saturate(.55); }
 .leaflet-tooltip.tip { font: 700 13px/1.2 var(--font-testo); border-radius: 8px; border: 0; box-shadow: var(--ombra); padding: 5px 8px; }
 .leaflet-control-attribution { font-size: 10px; }

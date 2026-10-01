@@ -98,6 +98,65 @@ function mostraSync(s) {
 }
 
 /* =========================================================== mappa */
+// Sentieri segnati (Waymarked Trails): le linee diventano rosso scuro, i simboli CAI/E1 restano com'erano.
+// Le tessere contengono linee e simboli nella stessa immagine: proteggiamo i blocchi pieni vicini a pixel
+// bianchi o neri (i cartellini con il numero) e ricoloriamo tutto il resto che è colorato.
+const ROSSO_SENTIERI = [128, 14, 20];
+function ricoloraSentieri(d, W, H) {
+  const n = W * H, seme = new Uint8Array(n), vuoto = new Uint8Array(n);
+  for (let p = 0, i = 0; p < n; p++, i += 4) {
+    if (d[i + 3] < 128) { vuoto[p] = 1; continue; }
+    const r = d[i], g = d[i + 1], b = d[i + 2], mx = Math.max(r, g, b), mn = Math.min(r, g, b);
+    if ((mn > 185 && mx - mn < 45) || mx < 90) seme[p] = 1;            // fondo bianco o testo nero dei simboli
+  }
+  const dilata = (src, R) => {                                          // dilatazione quadrata, separabile
+    const t = new Uint8Array(n), o = new Uint8Array(n);
+    for (let y = 0; y < H; y++) {
+      let c = 0; const q = y * W;
+      for (let x = -R; x < W; x++) { const a = x + R; if (a < W) c += src[q + a]; const s = x - R - 1; if (s >= 0) c -= src[q + s]; if (x >= 0) t[q + x] = c > 0; }
+    }
+    for (let x = 0; x < W; x++) {
+      let c = 0;
+      for (let y = -R; y < H; y++) { const a = y + R; if (a < H) c += t[a * W + x]; const s = y - R - 1; if (s >= 0) c -= t[s * W + x]; if (y >= 0) o[y * W + x] = c > 0; }
+    }
+    return o;
+  };
+  const vicino = dilata(seme, 7);
+  const eroso = dilata(vuoto, 2); for (let p = 0; p < n; p++) eroso[p] = eroso[p] ? 0 : 1;
+  const pieno = dilata(eroso, 2);                                       // apertura: restano i blocchi pieni, spariscono le linee sottili
+  const [R0, G0, B0] = ROSSO_SENTIERI;
+  for (let p = 0, i = 0; p < n; p++, i += 4) {
+    if (!d[i + 3] || (pieno[p] && vicino[p])) continue;
+    const r = d[i], g = d[i + 1], b = d[i + 2];
+    if (Math.max(r, g, b) - Math.min(r, g, b) > 50) { d[i] = R0; d[i + 1] = G0; d[i + 2] = B0; }
+  }
+}
+const SentieriSegnati = L.GridLayer.extend({
+  createTile(coords, done) {
+    const c = document.createElement('canvas'); c.width = c.height = 256;
+    const url = `https://tile.waymarkedtrails.org/hiking/${coords.z}/${coords.x}/${coords.y}.png`;
+    const disegna = (img, leggibile) => {
+      const g = c.getContext('2d', { willReadFrequently: true });
+      g.drawImage(img, 0, 0, 256, 256);
+      if (leggibile) {
+        try { const id = g.getImageData(0, 0, 256, 256); ricoloraSentieri(id.data, 256, 256); g.putImageData(id, 0, 0); }
+        catch { /* immagine non leggibile: resta con i colori originali */ }
+      }
+      done(null, c);
+    };
+    const img = new Image(); img.crossOrigin = 'anonymous';
+    img.onload = () => disegna(img, true);
+    img.onerror = () => {                                               // senza CORS (es. vecchia copia offline): colori originali
+      const im2 = new Image();
+      im2.onload = () => disegna(im2, false);
+      im2.onerror = e => done(e, c);
+      im2.src = url;
+    };
+    img.src = url;
+    return c;
+  },
+});
+
 function creaMappa() {
   map = L.map('mappa', { zoomControl: false, maxZoom: 20, attributionControl: false, tap: true });
   L.control.attribution({ position: 'bottomright', prefix: false }).addTo(map);
@@ -108,7 +167,7 @@ function creaMappa() {
     topo: L.tileLayer('https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png', { maxZoom: 20, maxNativeZoom: 17, subdomains: 'abc', className: 'tile-attenuata', attribution: '© OpenTopoMap (CC-BY-SA), dati © OpenStreetMap' }),
     osm: L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 20, maxNativeZoom: 19, className: 'tile-attenuata', attribution: '© OpenStreetMap' }),
   };
-  layers.cai = L.tileLayer('https://tile.waymarkedtrails.org/hiking/{z}/{x}/{y}.png', { maxZoom: 20, maxNativeZoom: 18, opacity: .85, className: 'tile-sentieri', attribution: 'Sentieri © waymarkedtrails.org' });
+  layers.cai = new SentieriSegnati({ maxZoom: 20, maxNativeZoom: 18, opacity: .9, className: 'tile-sentieri', attribution: 'Sentieri © waymarkedtrails.org' });
   const base = LS.get('base', 'satellite');
   (layers.base[base] || layers.base.satellite).addTo(map);
   if (LS.get('ov:cai', '1') === '1') layers.cai.addTo(map);
