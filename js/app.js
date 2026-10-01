@@ -113,6 +113,8 @@ function creaMappa() {
   (layers.base[base] || layers.base.satellite).addTo(map);
   if (LS.get('ov:cai', '1') === '1') layers.cai.addTo(map);
 
+  // i sentieri OSM stanno sotto il percorso di gara, i bivi e le svolte sopra
+  map.createPane('vieosm'); map.getPane('vieosm').style.zIndex = 402;
   ['traccia', 'chevron', 'bivi', 'svolte'].forEach((p, i) => { map.createPane(p); map.getPane(p).style.zIndex = 405 + i * 5; });
   const ll = S.traccia.latlngs();
   L.polyline(ll, { pane: 'traccia', color: '#153821', weight: 8, opacity: .85, interactive: false }).addTo(map);
@@ -865,7 +867,7 @@ async function caricaBivi() {
   if (!dati) { toast('OpenStreetMap non risponde: riprova tra qualche minuto.', 5000); return; }
   layers.bivi.clearLayers();
   for (const v of dati.vie) {
-    L.polyline(v.p, { pane: 'bivi', color: '#9fd8ff', weight: 2.5, opacity: .9, dashArray: v.s ? '6 5' : null, interactive: false }).addTo(layers.bivi);
+    L.polyline(v.p, { pane: 'vieosm', color: '#9fd8ff', weight: 2.5, opacity: .9, dashArray: v.s ? '6 5' : null, interactive: false }).addTo(layers.bivi);
   }
   S.bivi = dati.bivi;
   for (const g of S.bivi) {
