@@ -24,6 +24,9 @@
 
 * { box-sizing: border-box; }
 html, body { height: 100%; margin: 0; }
+html { background: #153821; }
+/* iPhone: 100dvh è l'altezza davvero visibile, senza la parte coperta dalle barre di Safari */
+body { height: 100vh; height: 100dvh; }
 body {
   display: flex; flex-direction: column;
   font-family: var(--font-testo);
@@ -107,19 +110,25 @@ button, input, select, textarea { font: inherit; color: inherit; }
   .mirino { left: calc(410px + (100% - 410px) / 2); }
 }
 @media (max-width: 899px) {
+  :root { --apri-chiuso: 70px; --apri-basso: 212px; }
   .pannello {
     left: 0; right: 0; bottom: 0; border-radius: 18px 18px 0 0; box-shadow: 0 -6px 26px rgba(0,0,0,.28); z-index: 1100;
-    height: 72%; transition: transform .28s ease;
+    height: 80%; transition: transform .3s cubic-bezier(.2, .8, .2, 1); will-change: transform;
   }
-  .pannello[data-altezza="basso"] { transform: translateY(calc(100% - 212px - var(--sicuro-basso))); }
+  .pannello[data-altezza="chiuso"] { transform: translateY(calc(100% - var(--apri-chiuso) - var(--sicuro-basso))); }
+  .pannello[data-altezza="basso"] { transform: translateY(calc(100% - var(--apri-basso) - var(--sicuro-basso))); }
   .pannello[data-altezza="alto"] { transform: translateY(0); }
-  .maniglia { display: block; border: 0; background: none; padding: 9px 0 3px; cursor: pointer; flex: none; }
+  .pannello.trascina { transition: none; }
+  .maniglia { display: block; width: 100%; border: 0; background: none; padding: 10px 0 7px; cursor: grab; flex: none; touch-action: none; }
   .maniglia span { display: block; width: 46px; height: 5px; border-radius: 3px; background: var(--linea); margin: 0 auto; }
-  .schede { padding-top: 0; }
-  .comandi-mappa { bottom: calc(232px + var(--sicuro-basso)); }
-  .leaflet-bottom { bottom: calc(212px + var(--sicuro-basso)); }
+  .schede { padding-top: 0; touch-action: none; }
+  .pannello-corpo { padding-bottom: calc(40px + var(--sicuro-basso)); }
+  .comandi-mappa { bottom: calc(var(--apri-basso) + 20px + var(--sicuro-basso)); transition: bottom .3s cubic-bezier(.2, .8, .2, 1); }
+  .leaflet-bottom { bottom: calc(var(--apri-basso) + var(--sicuro-basso)); }
+  .layout[data-pannello="chiuso"] .comandi-mappa { bottom: calc(var(--apri-chiuso) + 20px + var(--sicuro-basso)); }
+  .layout[data-pannello="chiuso"] .leaflet-bottom { bottom: calc(var(--apri-chiuso) + var(--sicuro-basso)); }
 }
-@media (prefers-reduced-motion: reduce) { .pannello { transition: none; } }
+@media (prefers-reduced-motion: reduce) { .pannello, .comandi-mappa { transition: none; } }
 
 /* ---------- Componenti ---------- */
 .btn {

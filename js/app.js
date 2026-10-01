@@ -213,7 +213,7 @@ function disegnaSegnali() {
 }
 
 function vola(latlng, z = 17) {
-  const off = mobile() ? 100 : 0;
+  const off = mobile() ? ($('#pannello').dataset.altezza === 'chiuso' ? 30 : 100) : 0;
   const zz = Math.max(map.getZoom(), z);
   const pt = map.project(latlng, zz).add([0, off]);
   map.flyTo(map.unproject(pt, zz), zz, { duration: .6 });
@@ -267,10 +267,100 @@ function disegnaVolontari() {
   for (const [uid, m] of mkVol) if (!visti.has(uid)) { m.remove(); mkVol.delete(uid); }
 }
 
+/* =========================================================== pannello trascinabile (telefono) */
+// Tre altezze: chiuso (solo maniglia e schede), basso (scheda breve), alto (scheda intera).
+// Si trascina dalla maniglia o dalle schede; dal contenuto, tirando giù quando è in cima.
+const ALTEZZE = ['alto', 'basso', 'chiuso'];
+function altezzaPannello(st) {
+  $('#pannello').dataset.altezza = st;
+  $('.layout').dataset.pannello = st;
+}
+function initFoglio() {
+  const p = $('#pannello'), corpo = $('.pannello-corpo');
+  altezzaPannello(p.dataset.altezza || 'basso');
+  const sonda = document.createElement('div');
+  sonda.style.cssText = 'position:absolute;visibility:hidden;padding-bottom:env(safe-area-inset-bottom,0px)';
+  document.body.appendChild(sonda);
+  const varPx = n => parseFloat(getComputedStyle(document.documentElement).getPropertyValue(n)) || 0;
+  const posizione = st => {
+    if (st === 'alto') return 0;
+    const sicuro = parseFloat(getComputedStyle(sonda).paddingBottom) || 0;
+    return p.offsetHeight - (st === 'basso' ? varPx('--apri-basso') : varPx('--apri-chiuso')) - sicuro;
+  };
+  const attuale = () => new DOMMatrixReadOnly(getComputedStyle(p).transform).m42;
+  let drag = null, inAttesa = null, ignoraClick = false;
+
+  const inizia = y => {
+    drag = { y0: y, base: attuale(), ultimo: y, t: performance.now(), v: 0, ty: attuale() };
+    p.classList.add('trascina');
+  };
+  const muovi = y => {
+    const max = posizione('chiuso');
+    let ty = drag.base + (y - drag.y0);
+    if (ty < 0) ty = ty / 4;                       // resistenza oltre il massimo
+    ty = Math.min(ty, max + 30);
+    p.style.transform = `translateY(${ty}px)`;
+    const ora = performance.now();
+    drag.v = (y - drag.ultimo) / Math.max(1, ora - drag.t);
+    drag.ultimo = y; drag.t = ora; drag.ty = ty;
+  };
+  const termina = () => {
+    const { ty, v } = drag; drag = null;
+    p.classList.remove('trascina'); p.style.transform = '';
+    const punti = ALTEZZE.map(st => ({ st, y: posizione(st) }));   // alto (0) … chiuso (max)
+    let scelto;
+    if (v > 0.45) scelto = punti.find(x => x.y > ty + 8) || punti.at(-1);
+    else if (v < -0.45) scelto = [...punti].reverse().find(x => x.y < ty - 8) || punti[0];
+    else scelto = punti.reduce((a, b) => Math.abs(b.y - ty) < Math.abs(a.y - ty) ? b : a);
+    altezzaPannello(scelto.st);
+    if (scelto.st !== 'alto') corpo.scrollTop = 0;
+  };
+
+  // maniglia e schede: trascinamento con il dito o il mouse; un tocco senza movimento resta un clic
+  [$('#maniglia'), $('.schede')].forEach(z => {
+    z.addEventListener('pointerdown', e => { if (mobile()) inAttesa = { y: e.clientY, id: e.pointerId, z }; });
+    z.addEventListener('pointermove', e => {
+      if (inAttesa && !drag && Math.abs(e.clientY - inAttesa.y) > 6) {
+        inizia(inAttesa.y); try { z.setPointerCapture(inAttesa.id); } catch {}
+      }
+      if (drag) muovi(e.clientY);
+    });
+    const fine = () => { if (drag) { termina(); ignoraClick = true; setTimeout(() => ignoraClick = false, 80); } inAttesa = null; };
+    z.addEventListener('pointerup', fine);
+    z.addEventListener('pointercancel', fine);
+    z.addEventListener('click', e => { if (ignoraClick) { e.stopImmediatePropagation(); e.preventDefault(); } }, true);
+  });
+  $('#maniglia').addEventListener('click', () => {
+    const st = p.dataset.altezza;
+    altezzaPannello(st === 'alto' ? 'basso' : st === 'basso' ? 'alto' : 'basso');
+  });
+
+  // contenuto: tirando giù quando la scheda è in cima il pannello scende; tirando su da basso si apre
+  let tocco = null;
+  corpo.addEventListener('touchstart', e => {
+    if (!mobile() || e.touches.length !== 1 || e.target.closest('input, textarea, select')) { tocco = null; return; }
+    tocco = { y0: e.touches[0].clientY, attivo: false };
+  }, { passive: true });
+  corpo.addEventListener('touchmove', e => {
+    if (!tocco) return;
+    const y = e.touches[0].clientY, dy = y - tocco.y0;
+    if (!tocco.attivo) {
+      if (Math.abs(dy) < 8) return;
+      const giu = dy > 0, st = p.dataset.altezza;
+      if ((giu && corpo.scrollTop <= 0) || (!giu && st !== 'alto')) { tocco.attivo = true; inizia(tocco.y0); }
+      else { tocco = null; return; }
+    }
+    e.preventDefault(); muovi(y);
+  }, { passive: false });
+  const fineTocco = () => { if (tocco?.attivo && drag) termina(); tocco = null; };
+  corpo.addEventListener('touchend', fineTocco);
+  corpo.addEventListener('touchcancel', fineTocco);
+}
+
 /* =========================================================== pannello */
 function collegaInterfaccia() {
   $$('.schede button').forEach(b => b.addEventListener('click', () => vaiScheda(b.dataset.scheda)));
-  $('#maniglia').addEventListener('click', () => { const p = $('#pannello'); p.dataset.altezza = p.dataset.altezza === 'alto' ? 'basso' : 'alto'; });
+  initFoglio();
   $('#btnMenu').addEventListener('click', () => { $('#menuInfo').textContent = infoSessione(); $('#dlgMenu').showModal(); });
   $('#btnLivelli').addEventListener('click', apriLivelli);
   $('#btnPosizione').addEventListener('click', () => {
@@ -332,7 +422,7 @@ function seleziona(id, { daElenco = false } = {}) {
   disegnaSegnali();
   vaiScheda('segnale');
   if (s) { if (daElenco || !map.getBounds().pad(-0.15).contains([s.lat, s.lon])) vola([s.lat, s.lon], 17); }
-  if (mobile()) $('#pannello').dataset.altezza = 'basso';
+  if (mobile()) altezzaPannello('basso');
   $('.pannello-corpo').scrollTop = 0;
 }
 
@@ -510,7 +600,7 @@ function renderSquadra() {
 async function azione(az, s) {
   switch (az) {
     case 'chiudi': S.sel = null; annullaSposta(); disegnaSegnali(); renderScheda(); break;
-    case 'centra': vola([s.lat, s.lon], 18); if (mobile()) $('#pannello').dataset.altezza = 'basso'; break;
+    case 'centra': vola([s.lat, s.lon], 18); if (mobile()) altezzaPannello('basso'); break;
     case 'copia': await navigator.clipboard?.writeText(`${fmtCoord(s.lat)}, ${fmtCoord(s.lon)}`); toast('Coordinate copiate'); break;
     case 'sposta': iniziaSposta(s); break;
     case 'annullaSposta': annullaSposta(); break;
@@ -535,7 +625,7 @@ function iniziaSposta(s) {
   S.sposta = { id: s.id, lat: s.lat, lon: s.lon };
   const m = markers.get(s.id); m.dragging.enable(); m.setIcon(iconaSegnale(s));
   vola([s.lat, s.lon], 18);
-  if (mobile()) $('#pannello').dataset.altezza = 'basso';
+  if (mobile()) altezzaPannello('basso');
   renderScheda();
 }
 function annullaSposta() {
