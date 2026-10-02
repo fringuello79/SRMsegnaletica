@@ -148,8 +148,13 @@
 <!-- Nuovo segnale -->
 <dialog id="dlgNuovo" class="dlg">
   <form method="dialog" id="formNuovo">
-    <h2>Nuovo segnale <span id="nuovoId"></span></h2>
-    <p class="dlg-testo">Scegli dove metterlo e il senso della freccia. Il numero è il prossimo libero: scrivilo sul paletto.</p>
+    <h2>Nuovo segnale</h2>
+    <p class="dlg-testo">Scegli dove metterlo, il numero e il senso della freccia.</p>
+    <label class="campo">Numero da scrivere sul paletto
+      <span class="num-campo"><b>S</b><input id="nuovoNum" autocomplete="off" autocapitalize="characters" spellcheck="false" maxlength="6" placeholder="16A"></span>
+      <small>Tra due paletti esistenti propone il numero del precedente con una lettera (16A, 16B); in fondo, il prossimo numero libero. Puoi cambiarlo.</small>
+    </label>
+    <p class="gps-stato debole" id="nuovoNumErr" hidden></p>
     <fieldset class="gruppo">
       <legend>Posizione</legend>
       <label class="opzione"><input type="radio" name="dove" value="gps" checked> La mia posizione GPS</label>
@@ -170,7 +175,23 @@
     <p class="dlg-nota" id="nuovoInfo"></p>
     <div class="riga-btn">
       <button class="btn" value="annulla" formnovalidate>Annulla</button>
-      <button class="btn btn-primario" value="ok">Aggiungi</button>
+      <button class="btn btn-primario" value="ok" id="nuovoOk">Aggiungi</button>
+    </div>
+  </form>
+</dialog>
+
+<!-- Cambio del numero di un paletto -->
+<dialog id="dlgNumero" class="dlg">
+  <form method="dialog">
+    <h2>Cambia numero a <span id="numeroVecchio"></span></h2>
+    <label class="campo">Nuovo numero
+      <span class="num-campo"><b>S</b><input id="numeroNuovo" autocomplete="off" autocapitalize="characters" spellcheck="false" maxlength="6" placeholder="16A"></span>
+      <small>Numero, con una lettera se serve: 16, 16A, 16B. La «S» si aggiunge da sola.</small>
+    </label>
+    <div id="numeroAvvisi"></div>
+    <div class="riga-btn">
+      <button class="btn" value="annulla" formnovalidate>Annulla</button>
+      <button class="btn btn-primario" value="ok" id="numeroOk">Cambia numero</button>
     </div>
   </form>
 </dialog>

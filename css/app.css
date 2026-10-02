@@ -163,6 +163,13 @@ button, input, select, textarea { font: inherit; color: inherit; }
 /* Scheda segnale */
 .seg-testa { display: flex; align-items: center; gap: 12px; margin-bottom: 12px; }
 .seg-num { font: 700 42px/0.9 var(--font-titolo); color: var(--bosco); letter-spacing: -.01em; flex: none; }
+button.seg-num { background: none; border: 0; padding: 4px 2px; margin: -4px -2px; border-radius: 10px; cursor: pointer; display: flex; align-items: flex-start; gap: 3px; }
+button.seg-num:hover, button.seg-num:focus-visible { background: var(--avorio); outline: none; }
+.seg-num .matita { width: 16px; height: 16px; color: var(--tenue); margin-top: 1px; }
+.num-campo { display: flex; align-items: center; min-height: 48px; border: 2px solid var(--linea); border-radius: 12px; background: #fff; padding-left: 12px; }
+.num-campo:focus-within { border-color: var(--bosco); }
+.num-campo b { font: 700 22px/1 var(--font-titolo); color: var(--tenue); }
+.campo .num-campo input { flex: 1; min-width: 0; min-height: 44px; border: 0; background: transparent; padding: 6px 8px 6px 1px; font: 700 22px/1 var(--font-titolo); text-transform: uppercase; }
 .seg-info { flex: 1; min-width: 0; display: grid; gap: 2px; justify-items: start; }
 .seg-info .km { font: 500 18px/1.1 var(--font-titolo); white-space: nowrap; }
 .seg-info .det { font-size: 13.5px; color: var(--tenue); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
@@ -305,7 +312,8 @@ progress { width: 100%; height: 10px; accent-color: var(--sole); }
   .btn { border-color: var(--avorio); color: var(--inchiostro); }
   .btn-primario { background: var(--sole); border-color: var(--sole); color: #1b1200; }
   .seg-num, .righe .n, .vuoto h2, .dlg h2, .dlg h3, .blocco h3, .gruppo legend, .schede button[aria-selected="true"] { color: #f3efe2; }
-  .campo input, textarea.nota { background: #101812; }
+  .campo input, textarea.nota, .num-campo { background: #101812; }
+  .campo .num-campo input { background: transparent; }
   .sync { background: #2a3a2e; color: #ece8dc; }
   .sync.offline { background: #4a3a15; } .sync.prova { background: #4a2020; }
   .freccia-card .proposta, .sposta-guida, .gps-stato.debole { background: #4a3a15; }

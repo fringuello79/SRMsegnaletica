@@ -522,7 +522,7 @@ function renderSegnale() {
   const storia = S.eventi.filter(e => e.segnale === s.id).slice(0, 30);
   el.innerHTML = `
     <div class="seg-testa">
-      <div class="seg-num">${esc(N(s))}</div>
+      <button type="button" class="seg-num" data-az="numero" title="Cambia numero" aria-label="${esc(N(s))}, cambia numero">${esc(N(s))}<svg class="matita" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20h4L19 9l-4-4L4 16v4zM14 6l4 4" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linejoin="round"/></svg></button>
       <div class="seg-info"><div class="km">km ${fmtKm(s.km)}${s.doppio ? ' e ' + fmtKm(Math.max(...s.frecce.map(f => f.km))) : ''}</div><div class="det">Sentiero ${esc(sent)}, ${ele} m</div>${chip(st)}</div>
       <button class="seg-chiudi" data-az="chiudi" aria-label="Chiudi la scheda">×</button>
     </div>
@@ -557,6 +557,7 @@ function renderSegnale() {
         <label class="campo">Correggi lo stato
           <select id="cambiaStato" class="btn">${ORDINE_STATI.map(k => `<option value="${k}" ${k === st ? 'selected' : ''}>${STATI[k].label}</option>`).join('')}</select>
         </label>
+        <button class="btn btn-piccolo" data-az="numero">Cambia numero (es. 16A, 16B)</button>
         <button class="btn btn-pericolo btn-piccolo" data-az="elimina">Elimina il segnale ${esc(N(s))}</button>
       </div>
     </div>`;
@@ -567,7 +568,7 @@ function renderSegnale() {
   aggiornaDistanza();
 }
 
-const AZIONI = { piano_caricato: 'Piano caricato', rinumerati: 'Paletti rinumerati in ordine di km', spostato: 'Spostato', messo_qui: 'Portato sulla posizione GPS', verificato: 'Posizione confermata', posato: 'Posato', rimosso: 'Rimosso', stato: 'Stato corretto', freccia: 'Senso della freccia cambiato', nota: 'Nota aggiornata', creato: 'Aggiunto', eliminato: 'Eliminato' };
+const AZIONI = { piano_caricato: 'Piano caricato', rinumerati: 'Paletti rinumerati in ordine di km', spostato: 'Spostato', messo_qui: 'Portato sulla posizione GPS', verificato: 'Posizione confermata', posato: 'Posato', rimosso: 'Rimosso', stato: 'Stato corretto', freccia: 'Senso della freccia cambiato', nota: 'Nota aggiornata', numero: 'Numero cambiato', creato: 'Aggiunto', eliminato: 'Eliminato' };
 function rigaStoria(e) {
   const t = quando(e);
   const d = new Date(t).toLocaleString('it-IT', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
@@ -669,6 +670,7 @@ async function azione(az, s) {
     case 'suggerimento': spostaA(s, s.suggerimento.lat, s.suggerimento.lon, 'sulla svolta della traccia'); break;
     case 'bivio': { const b = biviVicini(s.lat, s.lon)[0]; if (b) spostaA(s, b.lat, b.lon, 'sul bivio OpenStreetMap'); break; }
     case 'mettiQui': mettiQui(s); break;
+    case 'numero': apriNumero(s); break;
     case 'verifica': conferma(s, 'verificato'); break;
     case 'posa': conferma(s, 'posato'); break;
     case 'rimuovi': conferma(s, 'rimosso'); break;
@@ -800,15 +802,48 @@ function prossimoNum() {
   const n = Math.max(0, ...S.segnali.map(s => numero(N(s))), ...S.piano.segnali.map(s => numero(s.id)));
   return 'S' + String(n + 1).padStart(2, '0');
 }
+// "16a", "S16A", " s 6 b " → "S16A" / "S06B"; null se non è un numero valido (fino a 3 cifre + 2 lettere)
+function normalizzaNum(v) {
+  const m = String(v ?? '').toUpperCase().replace(/\s+/g, '').replace(/^S/, '').match(/^(\d{1,3})([A-Z]{0,2})$/);
+  return m ? 'S' + String(parseInt(m[1], 10)).padStart(2, '0') + m[2] : null;
+}
+function controllaNum(v, escludiId = null) {
+  const num = normalizzaNum(v);
+  if (!num) return { errore: 'Scrivi un numero, con una lettera se serve: 16, 16A, 16B.' };
+  const altro = S.segnali.find(s => s.id !== escludiId && N(s) === num);
+  if (altro) return { num, errore: `${num} è già usato dal paletto al km ${fmtKm(altro.km)}.` };
+  return { num };
+}
+// per un paletto aggiunto tra due esistenti propone il numero del precedente con la prima lettera libera (S16 → S16A, S16B…)
+function numeroSuggerito(km) {
+  const ord = [...S.segnali].sort((a, b) => a.km - b.km);
+  const prima = ord.filter(s => s.km <= km).pop();
+  const dopo = ord.find(s => s.km > km);
+  if (!prima || !dopo) return prossimoNum();
+  const base = normalizzaNum(N(prima))?.match(/^S(\d+)/)?.[1];
+  if (!base) return prossimoNum();
+  const usati = new Set(S.segnali.map(N));
+  for (const l of 'ABCDEFGHIJKLMNOPQRSTUVWXYZ') if (!usati.has(`S${base}${l}`)) return `S${base}${l}`;
+  return prossimoNum();
+}
 // identificativo interno libero: il numero stesso, oppure numero + suffisso se già usato da un paletto rinumerato
 function docLibero(num) {
   const usati = new Set(S.segnali.map(s => s.id));
   return usati.has(num) ? `${num}-${Date.now().toString(36)}` : num;
 }
 function apriNuovo() {
-  const d = $('#dlgNuovo'); const id = prossimoNum();
-  $('#nuovoId').textContent = id;
+  const d = $('#dlgNuovo'), inp = $('#nuovoNum'), ok = $('#nuovoOk');
+  let scritto = false;                    // se il numero lo scrive l'utente non lo cambiamo più noi
   $('#mirino').hidden = false;
+  const controlla = () => {
+    const r = controllaNum(inp.value);
+    const err = $('#nuovoNumErr');
+    err.textContent = r.errore || ''; err.hidden = !r.errore;
+    ok.disabled = !!r.errore;
+    return r;
+  };
+  inp.oninput = () => { scritto = true; controlla(); };
+  inp.onkeydown = e => { if (e.key === 'Enter') { e.preventDefault(); inp.blur(); } };
   const aggiornaInfo = () => {
     const dove = d.querySelector('[name=dove]:checked').value;
     const p = dove === 'gps' && S.me ? [S.me.lat, S.me.lon] : [map.getCenter().lat, map.getCenter().lng];
@@ -817,16 +852,21 @@ function apriNuovo() {
     $('#nuovoRitorno').hidden = !comune;
     $('#legendaDir1').textContent = comune ? 'Freccia per l\'andata' : 'Freccia per chi arriva';
     $('#nuovoInfo').textContent = (dove === 'gps' && !S.me) ? 'GPS non ancora disponibile: verrà usato il centro della mappa.' : `Punto al km ${fmtKm(pr.km)}, a ${Math.round(pr.d)} m dalla traccia.`;
+    if (!scritto) inp.value = numeroSuggerito(pr.km).replace(/^S/, '');
+    controlla();
     return { p, pr, comune };
   };
   d.querySelectorAll('[name=dove]').forEach(r => r.onchange = aggiornaInfo);
   d.querySelectorAll('.scelta-dir').forEach(g => g.querySelectorAll('button').forEach(b => b.onclick = () => { g.querySelectorAll('button').forEach(x => x.classList.toggle('on', x === b)); }));
   aggiornaInfo();
-  d.showModal();
+  d.returnValue = ''; d.showModal();
   d.onclose = async () => {
     $('#mirino').hidden = true;
     if (d.returnValue !== 'ok') return;
     const { p, pr, comune } = aggiornaInfo();
+    const r = controlla();                  // ricontrollo: un altro volontario può averlo appena usato
+    if (r.errore) { toast(r.errore, 5000); return; }
+    const id = r.num;
     const dir1 = d.querySelector('[data-nome=dir1] .on')?.dataset.v || 'dx';
     const dir2 = d.querySelector('[data-nome=dir2] .on')?.dataset.v || 'no';
     const frecce = [];
@@ -857,6 +897,7 @@ function apriRinumera() {
   $('#rinumeraCorpo').innerHTML = cambi.length
     ? `<p class="dlg-testo">I paletti prendono i numeri in ordine di chilometro. Cambiano ${cambi.length} numeri, con i codici delle loro frecce; la storia di ogni paletto resta collegata.</p>
        ${posati.length ? `<p class="gps-stato debole">Attenzione: ${posati.map(x => x.vecchio).join(', ')} ${posati.length > 1 ? 'risultano già posati' : 'risulta già posato'}. Il numero scritto sul paletto non corrisponderà più.</p>` : ''}
+       ${cambi.some(x => /[A-Z]$/.test(x.vecchio)) ? `<p class="gps-stato debole">I numeri con la lettera (${cambi.filter(x => /[A-Z]$/.test(x.vecchio)).map(x => esc(x.vecchio)).join(', ')}) diventano numeri normali e quelli dopo scalano.</p>` : ''}
        <ul class="storia">${cambi.map(x => `<li><time>km ${fmtKm(x.s.km)}</time><span><b>${esc(x.vecchio)}</b> diventa <b>${esc(x.nuovo)}</b></span></li>`).join('')}</ul>`
     : '<p class="dlg-testo">I paletti sono già numerati in ordine di chilometro.</p>';
   $('#rinumeraOk').hidden = !cambi.length;
@@ -866,6 +907,42 @@ function apriRinumera() {
     await S.store.salvaMolti(cambi.map(x => ({ id: x.s.id, patch: { num: x.nuovo, frecce: codiciFrecce(x.s, x.nuovo) } })),
       { azione: 'rinumerati', note: cambi.map(x => `${x.vecchio}→${x.nuovo}`).join(', ') });
     toast(`${cambi.length} paletti rinumerati`);
+  };
+}
+
+// cambio manuale del numero di un paletto (es. S16 → S16A): cambia solo il numero mostrato e i codici delle frecce
+function apriNumero(s) {
+  const d = $('#dlgNumero'), inp = $('#numeroNuovo'), ok = $('#numeroOk');
+  const vecchio = N(s);
+  $('#numeroVecchio').textContent = vecchio;
+  inp.value = vecchio.replace(/^S/, '');
+  const aggiorna = () => {
+    const r = controllaNum(inp.value, s.id);
+    const uguale = r.num === vecchio;
+    const righe = [];
+    if (r.errore) righe.push(`<p class="gps-stato debole">${esc(r.errore)}</p>`);
+    else if (!uguale) {
+      const codici = codiciFrecce(s, r.num).map(f => f.codice);
+      righe.push(`<p class="dlg-testo">${esc(vecchio)} diventa <b>${esc(r.num)}</b>${codici.length > 1 ? ` (frecce ${codici.map(esc).join(' e ')})` : ''}. Posizione, stato e storia restano gli stessi.</p>`);
+      if (s.stato === 'posato' || s.stato === 'rimosso') righe.push(`<p class="gps-stato debole">${esc(vecchio)} risulta già ${s.stato}: il numero scritto sul paletto non corrisponderà più.</p>`);
+    }
+    $('#numeroAvvisi').innerHTML = righe.join('');
+    ok.disabled = !!r.errore || uguale;
+    return r;
+  };
+  inp.oninput = aggiorna;
+  inp.onkeydown = e => { if (e.key === 'Enter') { e.preventDefault(); if (!ok.disabled) d.close('ok'); } };
+  aggiorna();
+  d.returnValue = ''; d.showModal();
+  inp.focus(); inp.select();
+  d.onclose = async () => {
+    if (d.returnValue !== 'ok') return;
+    const r = controllaNum(inp.value, s.id);  // ricontrollo: un altro volontario può averlo appena usato
+    if (r.errore) { toast(r.errore, 5000); return; }
+    if (r.num === vecchio) return;
+    const ora = S.segnali.find(x => x.id === s.id) || s;
+    await S.store.salva(s.id, { num: r.num, frecce: codiciFrecce(ora, r.num) }, { azione: 'numero', note: `${vecchio} → ${r.num}` });
+    toast(`${vecchio} ora è ${r.num}`);
   };
 }
 

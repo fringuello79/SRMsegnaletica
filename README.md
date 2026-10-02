@@ -70,7 +70,8 @@ Per usare un nuovo codice squadra (per esempio nel 2027): basta inventarne uno d
 
 1. **Verifica** (nei giorni prima): vai al punto con «Naviga fin qui». Se il bivio è altrove, mettiti sul bivio vero e premi «Metti qui», oppure trascina la freccia con «Sposta sulla mappa». Controlla il senso delle frecce (Sinistra / Dritto / Destra) e premi «Conferma posizione». La foto del bivio aiuta chi poserà il paletto.
 2. **Posa** (sabato 17): pianta il paletto, premi «Segna come posato» e scatta una foto. Se il GPS dice che sei lontano dal punto segnato, puoi aggiornare la posizione nello stesso passaggio.
-3. **Serve un paletto in più?** Usa il pulsante **+**: riceve il numero successivo (S15, S16…). Nel tratto percorso due volte chiede anche la freccia del ritorno.
+3. **Serve un paletto in più?** Usa il pulsante **+**. Se cade tra due paletti esistenti propone il numero del precedente con una lettera (dopo S16: S16A, poi S16B); in fondo al percorso propone il numero successivo. Il numero si può sempre cambiare. Nel tratto percorso due volte chiede anche la freccia del ritorno.
+   **Cambiare il numero di un paletto:** nella sua scheda tocca il numero grande in alto (o «Cambia numero» in fondo). Si accetta un numero con una lettera facoltativa (16, 16A, 16B); cambia solo il numero e i codici delle frecce, la storia resta collegata. I numeri già usati vengono rifiutati.
 4. **Rimozione** (dopo l'ultimo atleta, entro mercoledì 21 alle 16:00): «Segna come rimosso» con foto del punto ripulito.
 5. Dal menu: **report**, **GPX** e **inventario CSV** da allegare al rendiconto per il Parco e alla richiesta di restituzione della cauzione.
 
