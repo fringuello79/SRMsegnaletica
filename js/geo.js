@@ -70,6 +70,44 @@ export class Traccia {
 
 export const fmtKm = km => (Math.round(km * 100) / 100).toLocaleString('it-IT', { minimumFractionDigits: km % 1 ? 1 : 0, maximumFractionDigits: 2 });
 export const fmtCoord = v => v.toFixed(6);
+
+// Riconosce coordinate scritte o incollate: restituisce { lat, lon } oppure null.
+// Formati: 42.139664, 13.412430 · 42,139664 13,412430 · 42°08'22.8"N 13°24'44.7"E · 42°08.380'N 13°24.745'E ·
+// N 42° 08' 22.8" E 13° 24' 44.7" · link di Google Maps / Apple Maps / OpenStreetMap con le coordinate dentro.
+export function leggiCoordinate(testo) {
+  let t = String(testo ?? '').trim();
+  if (!t) return null;
+  try { t = decodeURIComponent(t.replace(/\+/g, ' ')); } catch { /* testo non codificato */ }
+  const ok = (lat, lon) => (Number.isFinite(lat) && Number.isFinite(lon) && Math.abs(lat) <= 90 && Math.abs(lon) <= 180) ? { lat, lon } : null;
+  const num = x => x ? parseFloat(String(x).replace(',', '.')) : 0;
+  // link: segnaposto esatto di Google (!3d…!4d…), poi i parametri con il punto cercato
+  let m = t.match(/!3d(-?\d+(?:\.\d+)?)!4d(-?\d+(?:\.\d+)?)/);
+  if (m) return ok(+m[1], +m[2]);
+  m = t.match(/[?&#](?:q|query|destination|daddr|ll|sll|mlat)=(-?\d+(?:\.\d+)?)(?:\s*,\s*|&mlon=)(-?\d+(?:\.\d+)?)/);
+  if (m) return ok(+m[1], +m[2]);
+  m = t.match(/#map=\d+(?:\.\d+)?\/(-?\d+(?:\.\d+)?)\/(-?\d+(?:\.\d+)?)/);   // openstreetmap.org/#map=17/42.13/13.41
+  if (m) return ok(+m[1], +m[2]);
+  // gradi, primi, secondi (anche solo gradi o gradi e primi decimali)
+  const parti = [...t.matchAll(/([NSEWO])?\s*(\d{1,3}(?:[.,]\d+)?)\s*°\s*(?:(\d{1,2}(?:[.,]\d+)?)\s*['′’]\s*)?(?:(\d{1,2}(?:[.,]\d+)?)\s*(?:["″”]|'')\s*)?([NSEWO])?/gi)];
+  if (parti.length >= 2) {
+    const val = p => {
+      let v = num(p[2]) + num(p[3]) / 60 + num(p[4]) / 3600;
+      const h = (p[1] || p[5] || '').toUpperCase();
+      if (h === 'S' || h === 'W' || h === 'O') v = -v;
+      return { v, h };
+    };
+    let [a, b] = parti.slice(0, 2).map(val);
+    if (/[EWO]/.test(a.h) && /[NS]/.test(b.h)) [a, b] = [b, a];
+    return ok(a.v, b.v);
+  }
+  // decimali con il punto: 42.139664, 13.412430 · 42.139664 13.412430 · 42.139664;13.412430 (anche dentro un link con @)
+  m = t.match(/(-?\d{1,3}\.\d+)\s*[,;\s]\s*(-?\d{1,3}\.\d+)/);
+  if (m) return ok(+m[1], +m[2]);
+  // decimali con la virgola: 42,139664 13,412430 · 42,139664; 13,412430
+  m = t.match(/(-?\d{1,3},\d+)\s*[;\s]\s*(-?\d{1,3},\d+)/);
+  if (m) return ok(num(m[1]), num(m[2]));
+  return null;
+}
 export function fmtDist(m) {
   if (m < 1000) return `${Math.round(m)} m`;
   return `${(m / 1000).toLocaleString('it-IT', { maximumFractionDigits: 1 })} km`;

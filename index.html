@@ -180,6 +180,23 @@
   </form>
 </dialog>
 
+<!-- Spostamento su coordinate -->
+<dialog id="dlgCoord" class="dlg">
+  <form method="dialog">
+    <h2>Sposta <span id="coordNum"></span> su coordinate</h2>
+    <p class="dlg-nota">Ora è a <span id="coordAttuali"></span>.</p>
+    <label class="campo">Nuove coordinate
+      <input id="coordTesto" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="42.139664, 13.412430">
+      <small>Scrivile o incollale da Google Maps, dal GPS o da un messaggio: 42.139664, 13.412430 · 42°08'22.8"N 13°24'44.7"E · link di Google Maps.</small>
+    </label>
+    <div id="coordEsito"></div>
+    <div class="riga-btn">
+      <button class="btn" value="annulla" formnovalidate>Annulla</button>
+      <button class="btn btn-primario" value="ok" id="coordOk">Sposta qui</button>
+    </div>
+  </form>
+</dialog>
+
 <!-- Cambio del numero di un paletto -->
 <dialog id="dlgNumero" class="dlg">
   <form method="dialog">

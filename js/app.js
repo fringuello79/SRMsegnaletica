@@ -1,5 +1,5 @@
 // Segnaletica SRM 2026 — strumento di campo per verifica, posa e rimozione dei segnali
-import { Traccia, dist, bearing, cardinale, fmtKm, fmtCoord, fmtDist } from './geo.js';
+import { Traccia, dist, bearing, cardinale, fmtKm, fmtCoord, fmtDist, leggiCoordinate } from './geo.js';
 import { STATI, ORDINE_STATI, DIR_LABEL, frecciaCartello, frecciaMappa } from './frecce.js';
 import { creaStore } from './store.js';
 import { firebaseConfig } from '../firebase-config.js';
@@ -538,7 +538,7 @@ function renderSegnale() {
     </div>
     <div class="blocco">
       <h3>Posizione</h3>
-      <div class="coord"><span>${fmtCoord(s.lat)}, ${fmtCoord(s.lon)}</span><button class="link" data-az="copia">Copia</button></div>
+      <div class="coord"><span>${fmtCoord(s.lat)}, ${fmtCoord(s.lon)}</span><button class="link" data-az="copia">Copia</button>${st !== 'rimosso' ? '<button class="link" data-az="coordinate">Inserisci coordinate</button>' : ''}</div>
       ${s.verificatoDa ? `<p class="dlg-nota">Posizione confermata da ${esc(s.verificatoDa)} ${s.verificatoIl ? fa(s.verificatoIl) : ''}.</p>` : `<p class="dlg-nota">Posizione calcolata dal piano: da verificare sul bivio reale prima di piantare il paletto.</p>`}
       ${s.posatoDa ? `<p class="dlg-nota">Posato da ${esc(s.posatoDa)} ${s.posatoIl ? fa(s.posatoIl) : ''}.</p>` : ''}
     </div>
@@ -671,6 +671,7 @@ async function azione(az, s) {
     case 'bivio': { const b = biviVicini(s.lat, s.lon)[0]; if (b) spostaA(s, b.lat, b.lon, 'sul bivio OpenStreetMap'); break; }
     case 'mettiQui': mettiQui(s); break;
     case 'numero': apriNumero(s); break;
+    case 'coordinate': apriCoordinate(s); break;
     case 'verifica': conferma(s, 'verificato'); break;
     case 'posa': conferma(s, 'posato'); break;
     case 'rimuovi': conferma(s, 'rimosso'); break;
@@ -725,6 +726,61 @@ async function applicaPosizione(s, lat, lon, tipo, da, dove = '', extra = {}, ev
   await S.store.salva(s.id, { lat: +lat.toFixed(7), lon: +lon.toFixed(7), km, frecce, ...extra },
     { azione: tipo, note: `${Math.round(mosso)} m ${dove}`.trim(), lat, lon, ...evExtra });
   toast(`${N(s)} spostato di ${fmtDist(mosso)}`);
+}
+
+// sposta un paletto su coordinate scritte o incollate (Google Maps, GPS, ecc.)
+function valutaCoordinate(s, testo) {
+  const t = String(testo || '').trim();
+  if (!t) return { html: '' };
+  const avviso = x => `<p class="gps-stato debole">${x}</p>`;
+  let c = leggiCoordinate(t);
+  if (!c && /goo\.gl|maps\.app/i.test(t)) return { html: avviso('I link brevi di Google Maps non contengono le coordinate. Apri il link, tieni premuto sul punto e copia i numeri che compaiono (es. 42.139664, 13.412430).') };
+  if (!c) return { html: avviso(`Non riconosco le coordinate. Esempi: 42.139664, 13.412430 oppure 42°08'22.8"N 13°24'44.7"E.`) };
+  let tutto = S.traccia.proietta(c.lat, c.lon), invertite = false;
+  if (tutto.d > 500) {                                   // forse latitudine e longitudine sono scambiate
+    const prova = S.traccia.proietta(c.lon, c.lat);
+    if (prova.d <= 500) { c = { lat: c.lon, lon: c.lat }; tutto = prova; invertite = true; }
+  }
+  if (tutto.d > 500) return { html: avviso(`Il punto ${fmtCoord(c.lat)}, ${fmtCoord(c.lon)} è a ${fmtDist(tutto.d)} dal percorso: controlla le coordinate.`) };
+  const kms = s.frecce.map(f => f.km);
+  const vicino = S.traccia.proietta(c.lat, c.lon, Math.min(...kms) - 1.5, Math.max(...kms) + 1.5);
+  if (vicino.d > tutto.d + 50) return { html: avviso(`Il punto cade vicino al km ${fmtKm(tutto.km)}, lontano da ${esc(N(s))} (km ${fmtKm(s.km)}). Controlla le coordinate; per un altro bivio aggiungi un nuovo segnale con il pulsante +.`) };
+  const mosso = dist([s.lat, s.lon], [c.lat, c.lon]);
+  const righe = [];
+  if (invertite) righe.push('<p class="dlg-nota">Latitudine e longitudine erano invertite: le ho scambiate.</p>');
+  righe.push(`<p class="dlg-testo">Nuovo punto <b>${fmtCoord(c.lat)}, ${fmtCoord(c.lon)}</b>, al km ${fmtKm(vicino.km)} e a ${Math.round(vicino.d)} m dalla traccia. ${mosso < 0.5 ? 'È già la posizione attuale.' : `${esc(N(s))} si sposta di <b>${fmtDist(mosso)}</b> verso ${cardinale(bearing([s.lat, s.lon], [c.lat, c.lon]))}.`}</p>`);
+  if (vicino.d > 40) righe.push(avviso(`È a ${Math.round(vicino.d)} m dalla traccia: verifica che sia sul sentiero giusto.`));
+  if (mosso > 300) righe.push(avviso(`Spostamento grande (${fmtDist(mosso)}): controlla di aver incollato le coordinate giuste.`));
+  if (s.stato === 'posato') righe.push(avviso(`${esc(N(s))} risulta già posato: cambia solo la posizione registrata.`));
+  return { html: righe.join(''), c: mosso >= 0.5 ? c : null };
+}
+function apriCoordinate(s) {
+  if (S.sposta) annullaSposta();
+  const d = $('#dlgCoord'), inp = $('#coordTesto'), ok = $('#coordOk');
+  $('#coordNum').textContent = N(s);
+  $('#coordAttuali').textContent = `${fmtCoord(s.lat)}, ${fmtCoord(s.lon)}`;
+  inp.value = '';
+  const aggiorna = () => {
+    const ora = S.segnali.find(x => x.id === s.id) || s;
+    const r = valutaCoordinate(ora, inp.value);
+    $('#coordEsito').innerHTML = r.html;
+    ok.disabled = !r.c;
+    return r;
+  };
+  inp.oninput = aggiorna;
+  inp.onkeydown = e => { if (e.key === 'Enter') { e.preventDefault(); if (!ok.disabled) d.close('ok'); } };
+  aggiorna();
+  d.returnValue = ''; d.showModal();
+  inp.focus();
+  d.onclose = async () => {
+    if (d.returnValue !== 'ok') return;
+    const ora = S.segnali.find(x => x.id === s.id);
+    if (!ora) return;
+    const { c } = valutaCoordinate(ora, inp.value);
+    if (!c) return;
+    await applicaPosizione(ora, c.lat, c.lon, 'spostato', { lat: ora.lat, lon: ora.lon }, 'con coordinate inserite', {}, { daLat: ora.lat, daLon: ora.lon });
+    vola([c.lat, c.lon], 18);
+  };
 }
 
 function mettiQui(s) {
