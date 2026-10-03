@@ -100,12 +100,13 @@ button, input, select, textarea { font: inherit; color: inherit; }
 }
 .schede button[aria-selected="true"] { color: var(--bosco); border-bottom-color: var(--sole); }
 .schede .conta { font: 700 12px/1 var(--font-testo); background: var(--ambra); color: #fff; border-radius: 10px; padding: 2px 6px; margin-left: 4px; vertical-align: 2px; }
-.pannello-corpo { overflow-y: auto; flex: 1; overscroll-behavior: contain; padding: 14px 16px calc(24px + var(--sicuro-basso)); }
+.pannello-corpo { overflow-y: auto; flex: 1; min-height: 0; overscroll-behavior: contain; padding: 14px 16px calc(24px + var(--sicuro-basso)); }
 
 @media (min-width: 900px) {
-  .layout { display: grid; grid-template-columns: 410px 1fr; }
+  /* la riga della griglia è alta quanto la finestra: il pannello non si allunga col contenuto, scorre al suo interno */
+  .layout { display: grid; grid-template-columns: 410px 1fr; grid-template-rows: minmax(0, 1fr); }
   #mappa { position: relative; grid-column: 2; inset: auto; height: 100%; }
-  .pannello { position: relative; grid-column: 1; grid-row: 1; height: 100%; border-right: 1px solid var(--linea); }
+  .pannello { position: relative; grid-column: 1; grid-row: 1; height: 100%; min-height: 0; border-right: 1px solid var(--linea); }
   .comandi-mappa { bottom: 28px; }
   .mirino { left: calc(410px + (100% - 410px) / 2); }
 }
