@@ -25,7 +25,17 @@ class StoreLocale extends Emitter {
   _notifica() {
     const segs = Object.values(this._leggi('segnali', {}));
     this.emit('segnali', segs, { daServer: true, inAttesa: false });
+    this.emit('presidi', Object.values(this._leggi('presidi', {})));
     this.emit('eventi', this._leggi('eventi', []));
+  }
+  async scriviPresidio(id, dati, ev) {
+    const m = this._leggi('presidi', {});
+    m[id] = { ...dati, id, aggiornato: Date.now(), da: this.nome };
+    this._scrivi('presidi', m); if (ev) this._evento('presidio:' + id, ev); this._notifica();
+  }
+  async eliminaPresidio(id, ev) {
+    const m = this._leggi('presidi', {}); delete m[id];
+    this._scrivi('presidi', m); if (ev) this._evento('presidio:' + id, ev); this._notifica();
   }
   async avvia() {
     this.emit('stato', { online: true, inAttesa: false, modo: 'prova' });
@@ -103,6 +113,10 @@ class StoreFirebase extends Emitter {
       this.emit('eventi', snap.docs.map(d => ({ ...d.data(), id: d.id })));
     }, err => this.emit('errore', messaggioErrore(err)));
 
+    fs.onSnapshot(this.col('presidi'), snap => {
+      this.emit('presidi', snap.docs.map(d => ({ ...d.data(), id: d.id })));
+    }, err => { console.warn('Presidi non leggibili', err); this.emit('presidi', [], { errore: err?.code || true }); });
+
     fs.onSnapshot(this.col('volontari'), snap => {
       this.emit('volontari', snap.docs.map(d => ({ ...d.data(), uid: d.id })));
     }, () => {});
@@ -140,6 +154,16 @@ class StoreFirebase extends Emitter {
   async elimina(id, ev) {
     const { fs } = this;
     attendiBreve(fs.deleteDoc(this.ref('segnali', id))); attendiBreve(this._ev(id, ev));
+  }
+  async scriviPresidio(id, dati, ev) {
+    const { fs } = this;
+    attendiBreve(fs.setDoc(this.ref('presidi', id), { ...pulisci(dati), aggiornato: fs.serverTimestamp(), da: this.nome }));
+    if (ev) attendiBreve(this._ev('presidio:' + id, ev));
+  }
+  async eliminaPresidio(id, ev) {
+    const { fs } = this;
+    attendiBreve(fs.deleteDoc(this.ref('presidi', id)));
+    if (ev) attendiBreve(this._ev('presidio:' + id, ev));
   }
   async posizione(pos) {
     const { fs } = this; const r = this.ref('volontari', this.uid);

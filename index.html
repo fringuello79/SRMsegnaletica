@@ -6,6 +6,7 @@
 <title>Segnaletica SRM 2026</title>
 <meta name="description" content="Posa, verifica e rimozione della segnaletica temporanea della Skyrace del Maglio 2026">
 <meta name="theme-color" content="#153821">
+<meta name="robots" content="noindex, nofollow">
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="icon" type="image/png" href="img/favicon.png">
 <link rel="apple-touch-icon" href="img/icon-192.png">
@@ -40,6 +41,9 @@
     <button class="btn-mappa" id="btnPosizione" aria-label="Centra sulla mia posizione">
       <svg viewBox="0 0 24 24" width="24" height="24"><circle cx="12" cy="12" r="4" fill="currentColor"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><circle cx="12" cy="12" r="7.5" fill="none" stroke="currentColor" stroke-width="2"/></svg>
     </button>
+    <button class="btn-mappa btn-presidio" id="btnPresidio" aria-label="Aggiungi un presidio" title="Aggiungi un presidio">
+      <svg viewBox="0 0 24 24" width="26" height="26" aria-hidden="true"><circle cx="11" cy="6" r="3.4" fill="currentColor"/><path d="M4.5 21v-4.2A6.5 6.5 0 0 1 11 10.3a6.5 6.5 0 0 1 4.6 1.9" fill="currentColor"/><path d="M18 13.5v7M14.5 17h7" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/></svg>
+    </button>
     <button class="btn-mappa btn-aggiungi" id="btnAggiungi" aria-label="Aggiungi un segnale">
       <svg viewBox="0 0 24 24" width="26" height="26"><path d="M12 5v14M5 12h14" stroke="currentColor" stroke-width="3" stroke-linecap="round"/></svg>
     </button>
@@ -50,11 +54,13 @@
     <nav class="schede" role="tablist">
       <button role="tab" data-scheda="segnale" aria-selected="true">Segnale</button>
       <button role="tab" data-scheda="elenco" aria-selected="false">Elenco</button>
+      <button role="tab" data-scheda="presidi" aria-selected="false">Presidi</button>
       <button role="tab" data-scheda="squadra" aria-selected="false">Squadra</button>
     </nav>
     <div class="pannello-corpo">
       <section class="scheda" id="scheda-segnale" role="tabpanel"></section>
       <section class="scheda" id="scheda-elenco" role="tabpanel" hidden></section>
+      <section class="scheda" id="scheda-presidi" role="tabpanel" hidden></section>
       <section class="scheda" id="scheda-squadra" role="tabpanel" hidden></section>
     </div>
   </aside>
@@ -66,12 +72,13 @@
     <img src="img/logo-srm.png" alt="" width="64" height="70" class="dlg-logo">
     <h2>Segnaletica SRM 2026</h2>
     <p class="dlg-testo" id="accessoTesto">Ogni posa, spostamento e rimozione viene registrata con il tuo nome.</p>
+    <p class="gps-stato debole" id="accessoAvviso" hidden></p>
     <label class="campo">Il tuo nome
       <input name="nome" id="inNome" autocomplete="given-name" required maxlength="30" placeholder="Es. Marco">
     </label>
     <label class="campo" id="campoSquadra">Codice squadra
-      <input name="squadra" id="inSquadra" autocomplete="off" autocapitalize="characters" minlength="10" maxlength="40" placeholder="Te lo manda Ale">
-      <small>Almeno 10 caratteri. È lo stesso per tutti i volontari.</small>
+      <input name="squadra" id="inSquadra" autocomplete="off" autocapitalize="characters" minlength="4" maxlength="40" placeholder="Te lo manda Ale">
+      <small>È lo stesso per tutti i volontari: scrivilo esattamente come ti è stato dato.</small>
     </label>
     <button class="btn btn-primario" value="ok">Entra</button>
   </form>
@@ -94,6 +101,7 @@
       <label class="opzione"><input type="checkbox" name="ov" value="osm"> Sentieri e bivi da OpenStreetMap (azzurri, bivi gialli)</label>
       <label class="opzione"><input type="checkbox" name="ov" value="svolte" checked> Svolte della traccia GPX</label>
       <label class="opzione"><input type="checkbox" name="ov" value="poi" checked> Ristori, cancelli e punti acqua</label>
+      <label class="opzione"><input type="checkbox" name="ov" value="presidi" checked> Presidi (omini verdi)</label>
       <label class="opzione"><input type="checkbox" name="ov" value="squadra" checked> Volontari sul percorso</label>
     </fieldset>
     <div class="gruppo">
@@ -176,6 +184,45 @@
     <div class="riga-btn">
       <button class="btn" value="annulla" formnovalidate>Annulla</button>
       <button class="btn btn-primario" value="ok" id="nuovoOk">Aggiungi</button>
+    </div>
+  </form>
+</dialog>
+
+<!-- Presidio: nuovo o modifica -->
+<dialog id="dlgPresidio" class="dlg dlg-largo">
+  <form method="dialog" id="formPresidio">
+    <h2 id="presidioTitolo">Nuovo presidio</h2>
+    <label class="campo">Nome del presidio
+      <input id="prNome" maxlength="80" autocomplete="off" placeholder="Es. Ristoro Fonte Canale, Bivio km 14">
+    </label>
+    <label class="campo">Funzione
+      <input id="prFunzione" maxlength="80" autocomplete="off" list="prFunzioni" placeholder="Es. Ristoro, Soccorso, Controllo passaggio">
+      <datalist id="prFunzioni">
+        <option value="Ristoro"><option value="Soccorso sanitario"><option value="Controllo passaggio"><option value="Cancello orario">
+        <option value="Incrocio con strada"><option value="Radio e comunicazioni"><option value="Chiusura gara (scopa)"><option value="Parcheggio"><option value="Partenza e arrivo">
+      </datalist>
+    </label>
+    <fieldset class="gruppo">
+      <legend>Persone presenti</legend>
+      <div id="prPersone" class="persone"></div>
+      <button type="button" class="btn btn-piccolo" id="prAggiungiPersona">+ Aggiungi persona</button>
+    </fieldset>
+    <label class="campo">Note
+      <textarea id="prNote" class="nota" maxlength="600" placeholder="Es. tenda gialla vicino al fontanile, raggiungibile dalla strada bianca"></textarea>
+    </label>
+    <fieldset class="gruppo">
+      <legend>Posizione</legend>
+      <label class="opzione" id="prDoveResta"><input type="radio" name="prDove" value="resta"> Lascialo dov'è</label>
+      <label class="opzione"><input type="radio" name="prDove" value="gps"> La mia posizione GPS</label>
+      <label class="opzione"><input type="radio" name="prDove" value="centro"> Il centro della mappa (mirino)</label>
+      <label class="opzione"><input type="radio" name="prDove" value="coord"> Coordinate precise</label>
+      <input id="prCoord" class="campo-input" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="42.139664, 13.412430 oppure 42°08'22.8&quot;N 13°24'44.7&quot;E" hidden>
+      <p class="dlg-nota" id="prDoveInfo"></p>
+    </fieldset>
+    <p class="gps-stato debole" id="prErrore" hidden></p>
+    <div class="riga-btn">
+      <button class="btn" value="annulla" formnovalidate>Annulla</button>
+      <button class="btn btn-primario" value="ok" id="prOk">Salva</button>
     </div>
   </form>
 </dialog>

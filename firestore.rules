@@ -6,7 +6,7 @@ service cloud.firestore {
   match /databases/{database}/documents {
 
     function entrato() { return request.auth != null; }
-    function codiceValido(squadra) { return squadra.size() >= 10 && squadra.size() <= 40; }
+    function codiceValido(squadra) { return squadra.size() >= 4 && squadra.size() <= 40; }
 
     match /squadre/{squadra} {
       allow read, write: if false;            // l'elenco delle squadre non è mai leggibile
@@ -26,6 +26,15 @@ service cloud.firestore {
           && request.resource.data.uid == request.auth.uid
           && (!('foto' in request.resource.data) || request.resource.data.foto.size() < 400000);
         allow update, delete: if false;
+      }
+
+      // presidi lungo il percorso: nome, posizione, persone con telefono e ruolo, note
+      match /presidi/{id} {
+        allow read, delete: if entrato() && codiceValido(squadra);
+        allow create, update: if entrato() && codiceValido(squadra)
+          && request.resource.data.lat is number && request.resource.data.lon is number
+          && request.resource.data.nome is string && request.resource.data.nome.size() > 0 && request.resource.data.nome.size() <= 80
+          && (!('persone' in request.resource.data) || (request.resource.data.persone is list && request.resource.data.persone.size() <= 30));
       }
 
       // posizione dei volontari: ognuno scrive solo la propria

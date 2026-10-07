@@ -8,7 +8,7 @@ const N = s => s?.num || s?.id || '';
 const $ = s => document.querySelector(s);
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const ESRI = 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}';
-let T, piano, poi, mappe = [];
+let T, piano, poi, mappe = [], presidi = [], livelloPresidi = null;
 
 async function avvia() {
   const [tr, p, po] = await Promise.all(['data/traccia.json', 'data/segnali.json', 'data/poi.json'].map(u => fetch(u).then(r => r.json())));
@@ -20,7 +20,7 @@ async function avvia() {
   let reso = false;
   const disegna = (lista, fonte) => { render(lista.length ? lista : piano.segnali, fonte); reso = true; };
   let nome = ''; let squadra = '';
-  try { nome = localStorage.getItem('srmseg:nome') || ''; squadra = localStorage.getItem('srmseg:squadra') || ''; } catch {}
+  try { nome = localStorage.getItem('srmseg:nome') || ''; squadra = (localStorage.getItem('srmseg:squadra') || '').trim().toUpperCase().replace(/\s+/g, ''); } catch {}
   const usaFirebase = !!(firebaseConfig?.apiKey && squadra);
   const temaLocale = (() => { try { return !!localStorage.getItem('srmseg:dati:segnali'); } catch { return false; } })();
   if (usaFirebase || temaLocale) {
@@ -30,6 +30,7 @@ async function avvia() {
       if (!primo && !meta.daServer) return;
       if (meta.daServer || !usaFirebase) { primo = false; disegna([...lista].sort((a, b) => a.km - b.km), usaFirebase ? 'squadra' : 'dispositivo'); }
     });
+    st.on('presidi', lista => { presidi = [...lista].sort((a, b) => (a.km ?? 0) - (b.km ?? 0)); disegnaPresidi(); });
     st.avvia().catch(() => disegna([], 'piano'));
     setTimeout(() => { if (!reso) disegna([], 'piano'); }, 6000);
   } else disegna([], 'piano');
@@ -49,6 +50,8 @@ function render(segnali, fonte) {
   poi.forEach(p => L.circleMarker([p.lat, p.lon], { radius: 4, color: '#fff', weight: 2, fillColor: '#1f5fad', fillOpacity: 1 }).addTo(mp));
   mp.fitBounds(L.latLngBounds(T.latlngs()), { padding: [14, 14] });
   mappe.push(mp);
+  livelloPresidi = L.layerGroup().addTo(mp);
+  disegnaPresidi();
 
   // tabella
   $('#tabella tbody').innerHTML = segnali.map(s => `<tr>
@@ -73,6 +76,21 @@ function render(segnali, fonte) {
     qr.addData(`https://www.google.com/maps/search/?api=1&query=${s.lat},${s.lon}`); qr.make();
     document.getElementById('qr-' + s.id).innerHTML = qr.createSvgTag({ cellSize: 3, margin: 0, scalable: true });
   });
+}
+
+// presidi: tabella con persone e telefoni, cerchi verdi sulla mappa d'insieme
+function disegnaPresidi() {
+  const sez = $('#presidiRep');
+  sez.hidden = !presidi.length;
+  $('#tabellaPresidi tbody').innerHTML = presidi.map(p => `<tr>
+    <td>${fmtKm(p.km ?? 0)}</td>
+    <td><b>${esc(p.nome)}</b>${p.funzione ? `<br>${esc(p.funzione)}` : ''}<br><small>${fmtCoord(p.lat)}, ${fmtCoord(p.lon)}</small></td>
+    <td>${(p.persone || []).map(x => `${esc(x.nome || '')}${x.ruolo ? ` <em>(${esc(x.ruolo)})</em>` : ''}${x.tel ? ` <b>${esc(x.tel)}</b>` : ''}`).join('<br>') || '—'}</td>
+    <td>${esc(p.note || '')}</td></tr>`).join('');
+  if (!livelloPresidi) return;
+  livelloPresidi.clearLayers();
+  presidi.forEach(p => L.circleMarker([p.lat, p.lon], { radius: 7, color: '#fff', weight: 2.5, fillColor: '#18853b', fillOpacity: 1 })
+    .bindTooltip(esc(p.nome), { permanent: false }).addTo(livelloPresidi));
 }
 
 function aggiungiTraccia(m, w) {

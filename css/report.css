@@ -68,7 +68,7 @@ h2 { font: 700 24px/1.15 var(--titolo); color: var(--bosco); margin: 0 0 10px; }
   .sc-corpo { grid-template-columns: 1fr; }
   .mappa-grande { height: 380px; }
   .tabella { font-size: 12.5px; }
-  .tabella th:nth-child(4), .tabella td:nth-child(4), .tabella th:nth-child(5), .tabella td:nth-child(5) { display: none; }
+  #tabella th:nth-child(4), #tabella td:nth-child(4), #tabella th:nth-child(5), #tabella td:nth-child(5) { display: none; }
 }
 @media print {
   @page { size: A4; margin: 12mm; }

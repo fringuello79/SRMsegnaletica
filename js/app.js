@@ -15,15 +15,18 @@ const LS = {
 
 // numero visualizzato del paletto (può differire dall'identificativo interno dopo una rinumerazione)
 const N = s => s?.num || s?.id || '';
-const numDi = id => { const s = S.segnali.find(x => x.id === id); return s ? N(s) : id; };
+const numDi = id => {
+  if (String(id).startsWith('presidio:')) { const p = S.presidi.find(x => x.id === id.slice(9)); return 'presidio ' + (p ? p.nome : ''); }
+  const s = S.segnali.find(x => x.id === id); return s ? N(s) : id;
+};
 const S = {
   traccia: null, piano: null, poi: [], meta: {},
-  segnali: [], eventi: [], volontari: [], daServer: false,
-  sel: null, scheda: 'segnale', filtro: 'tutti',
+  segnali: [], eventi: [], volontari: [], presidi: [], daServer: false,
+  sel: null, selP: null, scheda: 'segnale', filtro: 'tutti',
   me: null, segui: false, condividi: LS.get('condividi', '1') === '1',
-  sposta: null, bivi: [], store: null, nome: '', squadra: '', modo: 'prova',
+  sposta: null, spostaP: null, bivi: [], store: null, nome: '', squadra: '', modo: 'prova',
 };
-let map, layers = {}, markers = new Map(), mkMe, cerchioMe, mkVol = new Map();
+let map, layers = {}, markers = new Map(), markersP = new Map(), mkMe, cerchioMe, mkVol = new Map();
 
 /* =========================================================== avvio */
 async function avvia() {
@@ -37,28 +40,46 @@ async function avvia() {
 }
 
 /* =========================================================== accesso e archivio */
+// codice squadra: senza spazi e in maiuscolo, così «srm26» e «SRM26» sono la stessa squadra
+const normCodice = c => String(c || '').trim().toUpperCase().replace(/\s+/g, '');
+// impronte SHA-256 dei codici non più in uso (il codice vero non compare nel sorgente pubblico)
+const CODICI_DISMESSI = ['6e639817d7af2a6881326d3a2eaaee00df41fa22c76f2de078bb553ba720380b'];
+async function codiceDismesso(c) {
+  try {
+    const h = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(c));
+    return CODICI_DISMESSI.includes([...new Uint8Array(h)].map(b => b.toString(16).padStart(2, '0')).join(''));
+  } catch { return false; }
+}
+
 async function accesso() {
   const hash = new URLSearchParams(location.hash.slice(1));
-  if (hash.get('squadra')) { LS.set('squadra', hash.get('squadra').trim()); history.replaceState(null, '', location.pathname + location.search); }
+  if (hash.get('squadra')) { LS.set('squadra', normCodice(hash.get('squadra'))); history.replaceState(null, '', location.pathname + location.search); }
   S.nome = LS.get('nome', '');
-  S.squadra = LS.get('squadra', '');
+  S.squadra = normCodice(LS.get('squadra', ''));
+  let avviso = '';
+  if (S.squadra && await codiceDismesso(S.squadra)) {
+    S.squadra = ''; LS.set('squadra', '');
+    avviso = 'Il codice della squadra è cambiato: inserisci quello nuovo.';
+  }
   const serveSquadra = !!firebaseConfig?.apiKey;
-  if (!S.nome || (serveSquadra && (!S.squadra || S.squadra.length < 10))) await chiediAccesso(serveSquadra);
+  if (!S.nome || (serveSquadra && S.squadra.length < 4)) await chiediAccesso(serveSquadra, avviso);
   await apriArchivio();
   if (!LS.get('guidaVista')) { LS.set('guidaVista', '1'); $('#dlgGuida').showModal(); }
 }
 
-function chiediAccesso(serveSquadra) {
+function chiediAccesso(serveSquadra, avviso = '') {
   return new Promise(ok => {
     const d = $('#dlgAccesso');
     $('#inNome').value = S.nome; $('#inSquadra').value = S.squadra;
     $('#campoSquadra').hidden = !serveSquadra; $('#inSquadra').required = serveSquadra;
     if (!serveSquadra) $('#accessoTesto').textContent = 'Modalità prova: i dati restano su questo dispositivo. Ogni azione viene registrata con il tuo nome.';
+    $('#accessoAvviso').textContent = avviso; $('#accessoAvviso').hidden = !avviso;
     d.addEventListener('cancel', e => e.preventDefault(), { once: true });
     d.showModal();
+    if (avviso) $('#inSquadra').focus();
     $('#formAccesso').onsubmit = () => {
       S.nome = $('#inNome').value.trim(); LS.set('nome', S.nome);
-      if (serveSquadra) { S.squadra = $('#inSquadra').value.trim(); LS.set('squadra', S.squadra); }
+      if (serveSquadra) { S.squadra = normCodice($('#inSquadra').value); LS.set('squadra', S.squadra); }
       ok();
     };
   });
@@ -75,6 +96,12 @@ async function apriArchivio() {
     }
     if (S.sel && !S.segnali.find(s => s.id === S.sel)) S.sel = null;
     disegnaSegnali(); aggiornaTutto();
+  });
+  st.on('presidi', lista => {
+    S.presidi = lista.sort((a, b) => (a.km ?? 0) - (b.km ?? 0));
+    if (S.selP && !S.presidi.find(p => p.id === S.selP)) S.selP = null;
+    disegnaPresidi(); renderAvanzamento();
+    if (S.scheda === 'presidi') renderScheda();
   });
   st.on('eventi', ev => { S.eventi = ev; if (S.scheda !== 'elenco') renderScheda(); });
   st.on('volontari', v => { S.volontari = v; disegnaVolontari(); if (S.scheda === 'squadra') renderScheda(); });
@@ -217,9 +244,12 @@ function creaMappa() {
   layers.squadra = L.layerGroup();
   if (LS.get('ov:squadra', '1') === '1') layers.squadra.addTo(map);
   layers.bivi = L.layerGroup();
+  layers.presidi = L.layerGroup();
+  if (LS.get('ov:presidi', '1') === '1') layers.presidi.addTo(map);
 
   map.on('click', e => {
     if (S.sposta) { const m = markers.get(S.sposta.id); m?.setLatLng(e.latlng); anteprimaSposta(); return; }
+    if (S.spostaP) { const m = markersP.get(S.spostaP.id); m?.setLatLng(e.latlng); anteprimaSpostaP(); return; }
   });
   map.on('dragstart', () => { if (S.segui) { S.segui = false; $('#btnPosizione').classList.remove('attivo'); } });
 }
@@ -430,6 +460,7 @@ function collegaInterfaccia() {
     if (S.segui) vola([S.me.lat, S.me.lon], 16);
   });
   $('#btnAggiungi').addEventListener('click', apriNuovo);
+  $('#btnPresidio').addEventListener('click', () => apriPresidio());
   $('#btnGpx').addEventListener('click', esportaGpx);
   $('#btnCsv').addEventListener('click', esportaCsv);
   $('#btnGuida').addEventListener('click', () => { $('#dlgMenu').close(); $('#dlgGuida').showModal(); });
@@ -466,6 +497,7 @@ function renderAvanzamento() {
   $('#avanzamento').innerHTML = `<span class="numeri">${testo}</span><span class="barra-stati" aria-hidden="true">${ORDINE_STATI.map(k => `<span style="width:${c[k] / n * 100}%;background:${STATI[k].colore}"></span>`).join('')}</span>`;
   const daFare = c.da_verificare;
   $('.schede [data-scheda="elenco"]').innerHTML = `Elenco${daFare ? `<span class="conta" title="Da verificare">${daFare}</span>` : ''}`;
+  $('.schede [data-scheda="presidi"]').innerHTML = `Presidi${S.presidi.length ? `<span class="conta conta-verde" title="Presidi">${S.presidi.length}</span>` : ''}`;
 }
 
 let rinviaRender = false;
@@ -473,11 +505,13 @@ function renderScheda() {
   if (document.activeElement?.matches?.('textarea.nota')) { rinviaRender = true; return; }
   if (S.scheda === 'segnale') renderSegnale();
   else if (S.scheda === 'elenco') renderElenco();
+  else if (S.scheda === 'presidi') renderPresidi();
   else renderSquadra();
 }
 
 function seleziona(id, { daElenco = false } = {}) {
   if (S.sposta && S.sposta.id !== id) annullaSposta();
+  if (S.spostaP) annullaSpostaP();
   S.sel = id;
   const s = S.segnali.find(x => x.id === id);
   disegnaSegnali();
@@ -568,16 +602,20 @@ function renderSegnale() {
   aggiornaDistanza();
 }
 
-const AZIONI = { piano_caricato: 'Piano caricato', rinumerati: 'Paletti rinumerati in ordine di km', spostato: 'Spostato', messo_qui: 'Portato sulla posizione GPS', verificato: 'Posizione confermata', posato: 'Posato', rimosso: 'Rimosso', stato: 'Stato corretto', freccia: 'Senso della freccia cambiato', nota: 'Nota aggiornata', numero: 'Numero cambiato', creato: 'Aggiunto', eliminato: 'Eliminato' };
+const AZIONI = { piano_caricato: 'Piano caricato', rinumerati: 'Paletti rinumerati in ordine di km', spostato: 'Spostato', messo_qui: 'Portato sulla posizione GPS', verificato: 'Posizione confermata', posato: 'Posato', rimosso: 'Rimosso', stato: 'Stato corretto', freccia: 'Senso della freccia cambiato', nota: 'Nota aggiornata', numero: 'Numero cambiato', presidio_creato: 'Presidio aggiunto', presidio_modificato: 'Presidio modificato', presidio_spostato: 'Presidio spostato', presidio_eliminato: 'Presidio eliminato', trasferiti: 'Dati trasferiti sul nuovo codice', creato: 'Aggiunto', eliminato: 'Eliminato' };
 function rigaStoria(e) {
   const t = quando(e);
   const d = new Date(t).toLocaleString('it-IT', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
-  return `<li><time>${d}</time><span><b>${esc(AZIONI[e.azione] || e.azione)}</b>${e.segnale && e.segnale !== '*' && S.scheda !== 'segnale' ? ' ' + esc(numDi(e.segnale)) : ''}, ${esc(e.chi || '')}${e.note ? `. ${esc(e.note)}` : ''}</span>${e.foto ? `<img src="${e.foto}" alt="Foto di ${esc(e.chi || '')}">` : ''}</li>`;
+  return `<li><time>${d}</time><span><b>${esc(AZIONI[e.azione] || e.azione)}</b>${e.segnale && e.segnale !== '*' && S.scheda !== 'segnale' && !(S.scheda === 'presidi' && S.selP) ? ' ' + esc(numDi(e.segnale)) : ''}, ${esc(e.chi || '')}${e.note ? `. ${esc(e.note)}` : ''}</span>${e.foto ? `<img src="${e.foto}" alt="Foto di ${esc(e.chi || '')}">` : ''}</li>`;
 }
 
 function renderRiepilogo() {
   if (!S.segnali.length) {
-    if (S.modo === 'firebase' && S.daServer) return `<div class="vuoto"><h2>La squadra è vuota</h2><p>Carica il piano: ${S.piano.segnali.length} paletti dalle tue indicazioni, con le frecce doppie nel tratto percorso due volte.</p><button class="btn btn-sole" data-az="carica">Carica il piano dei segnali</button></div>`;
+    // codice senza dati: quasi sempre è scritto male. Il piano iniziale si carica solo confermando apposta.
+    if (S.modo === 'firebase' && S.daServer) return `<div class="vuoto"><h2>Nessun dato con questo codice</h2>
+      <p>Il codice «${esc(S.squadra)}» non ha segnali. Controlla di averlo scritto esattamente come ti è stato dato, compresi eventuali punti.</p>
+      <button class="btn btn-sole" data-az="cambiaCodice">Scrivi di nuovo il codice</button>
+      <details class="dlg-nota" style="margin-top:14px"><summary>Squadra nuova davvero?</summary><p>Solo chi organizza: carica i ${S.piano.segnali.length} paletti del piano iniziale.</p><button class="btn btn-piccolo" data-az="carica">Carica il piano dei segnali</button></details></div>`;
     return `<div class="vuoto"><h2>Caricamento…</h2><p>Sto leggendo i segnali della squadra.</p></div>`;
   }
   const c = conteggi();
@@ -590,7 +628,11 @@ function renderRiepilogo() {
     <p class="dlg-nota" style="margin-top:14px">Tocca una freccia sulla mappa per aprirne la scheda. Le frecce puntano dove deve andare il corridore.</p>`;
 }
 function legaRiepilogo(el) {
-  el.querySelector('[data-az="carica"]')?.addEventListener('click', async e => { e.target.disabled = true; await S.store.inizializza(S.piano.segnali); toast('Piano caricato'); });
+  el.querySelector('[data-az="carica"]')?.addEventListener('click', async e => {
+    if (!confirm(`Creare la squadra «${S.squadra}» con il piano iniziale? Fallo solo se è davvero una squadra nuova.`)) return;
+    e.target.disabled = true; await S.store.inizializza(S.piano.segnali); toast('Piano caricato');
+  });
+  el.querySelector('[data-az="cambiaCodice"]')?.addEventListener('click', () => { LS.set('squadra', ''); location.reload(); });
   el.querySelectorAll('[data-sel]').forEach(b => b.addEventListener('click', () => seleziona(b.dataset.sel, { daElenco: true })));
 }
 
@@ -686,6 +728,7 @@ async function azione(az, s) {
 }
 
 function iniziaSposta(s) {
+  if (S.spostaP) annullaSpostaP();
   S.sposta = { id: s.id, lat: s.lat, lon: s.lon };
   const m = markers.get(s.id); m.dragging.enable(); m.setIcon(iconaSegnale(s));
   vola([s.lat, s.lon], 18);
@@ -1002,6 +1045,246 @@ function apriNumero(s) {
   };
 }
 
+/* =========================================================== presidi */
+// Un presidio è un punto con persone lungo il percorso (ristoro, soccorso, controllo…): omino verde sulla mappa.
+const OMINO = '<svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><circle cx="12" cy="6.3" r="3.7" fill="currentColor"/><path d="M4.6 21.6v-4.4a7.4 7.4 0 0 1 14.8 0v4.4z" fill="currentColor"/></svg>';
+const ICONA_TEL = '<svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><path d="M6.6 10.8a15.1 15.1 0 0 0 6.6 6.6l2.2-2.2a1 1 0 0 1 1-.25 11.4 11.4 0 0 0 3.6.57 1 1 0 0 1 1 1V20a1 1 0 0 1-1 1A17 17 0 0 1 3 4a1 1 0 0 1 1-1h3.5a1 1 0 0 1 1 1c0 1.25.2 2.45.57 3.57a1 1 0 0 1-.25 1z" fill="currentColor"/></svg>';
+const telLink = t => String(t || '').replace(/[^\d+]/g, '');
+const campiPresidio = p => ({ nome: p.nome, funzione: p.funzione || '', persone: p.persone || [], note: p.note || '', lat: p.lat, lon: p.lon, km: p.km ?? 0, creatoDa: p.creatoDa || '', creatoIl: p.creatoIl || Date.now() });
+
+function iconaPresidio(p) {
+  const sel = S.selP === p.id, trasc = S.spostaP?.id === p.id;
+  return L.divIcon({ className: 'mk-presidio', iconSize: [40, 40], iconAnchor: [20, 20],
+    html: `<div class="mp ${sel ? 'sel' : ''} ${trasc ? 'trascina' : ''}"><span class="omino">${OMINO}</span><span class="tag">${esc(p.nome)}</span></div>` });
+}
+function disegnaPresidi() {
+  if (!layers.presidi) return;
+  const visti = new Set();
+  for (const p of S.presidi) {
+    visti.add(p.id);
+    let m = markersP.get(p.id);
+    if (S.spostaP?.id === p.id && m) { m.setIcon(iconaPresidio(p)); continue; }
+    if (!m) {
+      m = L.marker([p.lat, p.lon], { icon: iconaPresidio(p), title: 'Presidio ' + p.nome, riseOnHover: true });
+      m.on('click', () => selezionaPresidio(p.id));
+      m.on('drag', anteprimaSpostaP); m.on('dragend', anteprimaSpostaP);
+      m.addTo(layers.presidi); markersP.set(p.id, m);
+    } else { m.setLatLng([p.lat, p.lon]); m.setIcon(iconaPresidio(p)); }
+    m.setZIndexOffset(S.selP === p.id ? 1200 : 400);
+  }
+  for (const [id, m] of markersP) if (!visti.has(id)) { m.remove(); markersP.delete(id); }
+}
+function selezionaPresidio(id, { daElenco = false } = {}) {
+  if (S.spostaP && S.spostaP.id !== id) annullaSpostaP();
+  S.selP = id;
+  const p = S.presidi.find(x => x.id === id);
+  if (!map.hasLayer(layers.presidi)) { layers.presidi.addTo(map); LS.set('ov:presidi', '1'); }
+  disegnaPresidi(); vaiScheda('presidi');
+  if (p && (daElenco || !map.getBounds().pad(-0.15).contains([p.lat, p.lon]))) vola([p.lat, p.lon], 16);
+  if (mobile()) altezzaPannello('basso');
+  $('.pannello-corpo').scrollTop = 0;
+}
+
+function rigaPersona(x) {
+  return `<li class="persona"><span class="pe-nome"><b>${esc(x.nome || 'Senza nome')}</b>${x.ruolo ? `<small>${esc(x.ruolo)}</small>` : ''}</span>${x.tel ? `<a class="btn btn-piccolo btn-chiama" href="tel:${esc(telLink(x.tel))}" aria-label="Chiama ${esc(x.nome || '')} al ${esc(x.tel)}">${ICONA_TEL}<span>${esc(x.tel)}</span></a>` : ''}</li>`;
+}
+function testoPresidi() {
+  return ['Presidi Skyrace del Maglio 2026', ...S.presidi.map(p => [
+    `\n• km ${fmtKm(p.km)}: ${p.nome}${p.funzione ? ' (' + p.funzione + ')' : ''}`,
+    ...(p.persone || []).map(x => `   ${[x.nome, x.ruolo].filter(Boolean).join(', ')}${x.tel ? ': ' + x.tel : ''}`),
+    p.note ? `   Note: ${p.note}` : '',
+    `   Posizione: https://www.google.com/maps/search/?api=1&query=${p.lat},${p.lon}`,
+  ].filter(Boolean).join('\n'))].join('\n');
+}
+
+function renderPresidi() {
+  const el = $('#scheda-presidi');
+  const p = S.presidi.find(x => x.id === S.selP);
+  if (p) { renderPresidio(el, p); return; }
+  el.innerHTML = `
+    <div class="presidi-testa">
+      <p class="dlg-nota">${S.presidi.length ? `${S.presidi.length} ${S.presidi.length === 1 ? 'presidio' : 'presidi'} in ordine di km. Tocca un numero per chiamare.` : 'Ancora nessun presidio. Aggiungili con il pulsante verde con l\'omino sulla mappa, oppure da qui.'}</p>
+      <div class="riga"><button class="btn btn-verde btn-piccolo" data-az="nuovo">+ Aggiungi presidio</button>${S.presidi.length ? '<button class="btn btn-piccolo" data-az="invia">Invia l\'elenco</button>' : ''}</div>
+    </div>
+    <ul class="presidi">${S.presidi.map(x => `<li class="presidio-card">
+      <button class="pc-testa" data-selp="${esc(x.id)}"><span class="omino">${OMINO}</span><span class="pc-titolo"><b>${esc(x.nome)}</b><small>km ${fmtKm(x.km)}${x.funzione ? ' · ' + esc(x.funzione) : ''}</small></span><span class="pc-vai" aria-hidden="true">›</span></button>
+      ${(x.persone || []).length ? `<ul class="persone-lista">${x.persone.map(rigaPersona).join('')}</ul>` : '<p class="dlg-nota pc-vuoto">Nessuna persona indicata.</p>'}
+    </li>`).join('')}</ul>`;
+  el.querySelector('[data-az="nuovo"]').addEventListener('click', () => apriPresidio());
+  el.querySelector('[data-az="invia"]')?.addEventListener('click', async () => {
+    const testo = testoPresidi();
+    if (navigator.share) { try { await navigator.share({ title: 'Presidi SRM 2026', text: testo }); return; } catch {} }
+    await navigator.clipboard?.writeText(testo); toast('Elenco copiato: incollalo nel gruppo WhatsApp');
+  });
+  el.querySelectorAll('[data-selp]').forEach(b => b.addEventListener('click', () => selezionaPresidio(b.dataset.selp, { daElenco: true })));
+}
+
+function renderPresidio(el, p) {
+  const pr = S.traccia.proietta(p.lat, p.lon);
+  const sp = S.spostaP?.id === p.id;
+  const storia = S.eventi.filter(e => e.segnale === 'presidio:' + p.id).slice(0, 30);
+  el.innerHTML = `
+    <div class="seg-testa">
+      <span class="pr-icona">${OMINO}</span>
+      <div class="seg-info"><div class="km pr-nome">${esc(p.nome)}</div><div class="det">km ${fmtKm(pr.km)}${pr.d > 60 ? `, a ${fmtDist(pr.d)} dalla traccia` : ''}${p.funzione ? ' · ' + esc(p.funzione) : ''}</div></div>
+      <button class="seg-chiudi" data-az="chiudiP" aria-label="Torna all'elenco dei presidi">×</button>
+    </div>
+    <div class="azioni">${sp
+      ? `<div class="sposta-guida" id="spostaInfoP">Trascina l'omino nel punto giusto, oppure tocca la mappa.</div>
+         <div class="riga"><button class="btn" data-az="annullaSpostaP">Annulla</button><button class="btn btn-sole" data-az="salvaSpostaP">Salva posizione</button></div>`
+      : `<div class="riga"><button class="btn btn-verde" data-az="modificaP">Modifica</button><button class="btn" data-az="spostaP">Sposta sulla mappa</button></div>
+         <div class="riga"><a class="btn" target="_blank" rel="noopener" href="https://www.google.com/maps/dir/?api=1&destination=${p.lat},${p.lon}&travelmode=walking">Naviga fin qui</a><button class="btn" data-az="centraP">Mostra in mappa</button></div>`}
+    </div>
+    <div class="blocco" style="border:0;margin-top:0;padding-top:0">
+      <h3>Persone presenti</h3>
+      ${(p.persone || []).length ? `<ul class="persone-lista">${p.persone.map(rigaPersona).join('')}</ul>` : '<p class="dlg-nota">Nessuna persona indicata: aggiungile con «Modifica».</p>'}
+    </div>
+    ${p.note ? `<div class="blocco"><h3>Note</h3><p class="pr-note">${esc(p.note)}</p></div>` : ''}
+    <div class="blocco">
+      <h3>Posizione</h3>
+      <div class="coord"><span>${fmtCoord(p.lat)}, ${fmtCoord(p.lon)}</span><button class="link" data-az="copiaP">Copia</button></div>
+      ${p.creatoDa ? `<p class="dlg-nota">Inserito da ${esc(p.creatoDa)}${p.creatoIl ? ' ' + fa(p.creatoIl) : ''}${p.da && p.da !== p.creatoDa ? `, ultima modifica di ${esc(p.da)}` : ''}.</p>` : ''}
+    </div>
+    <div class="blocco">
+      <h3>Storia</h3>
+      ${storia.length ? `<ul class="storia">${storia.map(rigaStoria).join('')}</ul>` : '<p class="dlg-nota">Ancora nessuna azione registrata.</p>'}
+    </div>
+    <div class="blocco"><button class="btn btn-pericolo btn-piccolo" data-az="eliminaP">Elimina il presidio</button></div>`;
+  el.querySelectorAll('[data-az]').forEach(b => b.addEventListener('click', () => azionePresidio(b.dataset.az, p)));
+}
+
+async function azionePresidio(az, p) {
+  switch (az) {
+    case 'chiudiP': annullaSpostaP(); S.selP = null; disegnaPresidi(); renderScheda(); break;
+    case 'modificaP': apriPresidio(p); break;
+    case 'spostaP': iniziaSpostaP(p); break;
+    case 'annullaSpostaP': annullaSpostaP(); break;
+    case 'salvaSpostaP': salvaSpostaP(p); break;
+    case 'centraP': vola([p.lat, p.lon], 18); if (mobile()) altezzaPannello('basso'); break;
+    case 'copiaP': await navigator.clipboard?.writeText(`${fmtCoord(p.lat)}, ${fmtCoord(p.lon)}`); toast('Coordinate copiate'); break;
+    case 'eliminaP':
+      if (!confirm(`Eliminare il presidio «${p.nome}»? Resta comunque nella storia delle azioni.`)) return;
+      S.selP = null; await S.store.eliminaPresidio(p.id, { azione: 'presidio_eliminato', note: `${p.nome} al km ${fmtKm(p.km)}` });
+      toast('Presidio eliminato'); break;
+  }
+}
+
+function iniziaSpostaP(p) {
+  if (S.sposta) annullaSposta();
+  S.spostaP = { id: p.id, lat: p.lat, lon: p.lon };
+  const m = markersP.get(p.id); if (!m) return;
+  m.dragging.enable(); m.setIcon(iconaPresidio(p));
+  vola([p.lat, p.lon], 18);
+  if (mobile()) altezzaPannello('basso');
+  renderScheda();
+}
+function annullaSpostaP() {
+  if (!S.spostaP) return;
+  const m = markersP.get(S.spostaP.id);
+  if (m) { m.dragging.disable(); m.setLatLng([S.spostaP.lat, S.spostaP.lon]); }
+  S.spostaP = null; disegnaPresidi(); renderScheda();
+}
+function anteprimaSpostaP() {
+  if (!S.spostaP) return;
+  const m = markersP.get(S.spostaP.id); const info = $('#spostaInfoP'); if (!m || !info) return;
+  const ll = m.getLatLng(); const pr = S.traccia.proietta(ll.lat, ll.lng);
+  info.innerHTML = `Spostato di <b>${fmtDist(dist([S.spostaP.lat, S.spostaP.lon], [ll.lat, ll.lng]))}</b>. Nuovo punto al km ${fmtKm(pr.km)}, a ${fmtDist(pr.d)} dalla traccia.`;
+}
+async function salvaSpostaP(p) {
+  const m = markersP.get(p.id); if (!m) return;
+  const ll = m.getLatLng(); const da = S.spostaP;
+  m.dragging.disable(); S.spostaP = null;
+  const pr = S.traccia.proietta(ll.lat, ll.lng);
+  const mosso = dist([da.lat, da.lon], [ll.lat, ll.lng]);
+  await S.store.scriviPresidio(p.id, { ...campiPresidio(p), lat: +ll.lat.toFixed(7), lon: +ll.lng.toFixed(7), km: Math.round(pr.km * 1000) / 1000 },
+    { azione: 'presidio_spostato', note: `${Math.round(mosso)} m`, lat: ll.lat, lon: ll.lng, daLat: da.lat, daLon: da.lon });
+  toast(`Presidio spostato di ${fmtDist(mosso)}`);
+}
+
+// finestra per un nuovo presidio o per modificarne uno
+function apriPresidio(p = null) {
+  if (S.spostaP) annullaSpostaP();
+  const d = $('#dlgPresidio');
+  $('#presidioTitolo').textContent = p ? 'Modifica presidio' : 'Nuovo presidio';
+  $('#prNome').value = p?.nome || ''; $('#prFunzione').value = p?.funzione || ''; $('#prNote').value = p?.note || '';
+  $('#prErrore').hidden = true;
+  const box = $('#prPersone'); box.innerHTML = '';
+  const riga = (x = {}) => {
+    const r = document.createElement('div'); r.className = 'persona-riga';
+    r.innerHTML = `<input class="pn" maxlength="60" placeholder="Nome e cognome" autocomplete="off" aria-label="Nome e cognome">
+      <input class="pt" maxlength="30" type="tel" inputmode="tel" placeholder="Telefono" autocomplete="off" aria-label="Telefono">
+      <input class="pr" maxlength="40" placeholder="Ruolo (es. responsabile)" autocomplete="off" aria-label="Ruolo">
+      <button type="button" class="btn-togli" aria-label="Togli questa persona">×</button>`;
+    r.querySelector('.pn').value = x.nome || ''; r.querySelector('.pt').value = x.tel || ''; r.querySelector('.pr').value = x.ruolo || '';
+    r.querySelector('.btn-togli').onclick = () => { r.remove(); if (!box.children.length) riga(); };
+    box.appendChild(r); return r;
+  };
+  (p?.persone?.length ? p.persone : [{}]).forEach(x => riga(x));
+  $('#prAggiungiPersona').onclick = () => riga().querySelector('.pn').focus();
+
+  const radios = [...d.querySelectorAll('[name=prDove]')];
+  $('#prDoveResta').hidden = !p;
+  const iniziale = p ? 'resta' : (S.me ? 'gps' : 'centro');
+  radios.forEach(r => r.checked = r.value === iniziale);
+  $('#prCoord').value = '';
+  const dove = () => radios.find(r => r.checked)?.value || 'centro';
+  const posizione = () => {
+    const v = dove();
+    let c;
+    if (v === 'resta') c = { lat: p.lat, lon: p.lon };
+    else if (v === 'gps') { if (!S.me) return { errore: 'GPS non ancora disponibile: usa il mirino o le coordinate.' }; c = { lat: S.me.lat, lon: S.me.lon }; }
+    else if (v === 'centro') { const m = map.getCenter(); c = { lat: m.lat, lon: m.lng }; }
+    else {
+      const t = $('#prCoord').value.trim();
+      if (!t) return { errore: 'Scrivi o incolla le coordinate.' };
+      c = leggiCoordinate(t);
+      if (!c) return { errore: 'Non riconosco le coordinate. Esempio: 42.139664, 13.412430' };
+      if (S.traccia.proietta(c.lat, c.lon).d > 5000 && S.traccia.proietta(c.lon, c.lat).d <= 5000) c = { lat: c.lon, lon: c.lat };
+    }
+    const pr = S.traccia.proietta(c.lat, c.lon);
+    if (pr.d > 5000) return { errore: `Il punto è a ${fmtDist(pr.d)} dal percorso: controlla la posizione.` };
+    return { ...c, pr, testo: `Punto al km ${fmtKm(pr.km)}, a ${fmtDist(pr.d)} dalla traccia${v === 'gps' ? ` (GPS ±${Math.round(S.me.acc)} m)` : ''}.` };
+  };
+  const aggiornaDove = () => {
+    const v = dove();
+    $('#prCoord').hidden = v !== 'coord';
+    $('#mirino').hidden = v !== 'centro';
+    const r = posizione();
+    $('#prDoveInfo').textContent = r.errore || r.testo;
+  };
+  radios.forEach(r => r.onchange = () => { aggiornaDove(); if (dove() === 'coord') $('#prCoord').focus(); });
+  $('#prCoord').oninput = aggiornaDove;
+  aggiornaDove();
+  $('#prOk').onclick = e => {                         // controlli prima di chiudere: se manca qualcosa la finestra resta aperta
+    const errore = !$('#prNome').value.trim() ? 'Dai un nome al presidio (es. «Ristoro Fonte Canale»).' : posizione().errore;
+    if (errore) { e.preventDefault(); $('#prErrore').textContent = errore; $('#prErrore').hidden = false; }
+  };
+  d.querySelectorAll('input:not([type=radio])').forEach(i => i.onkeydown = e => { if (e.key === 'Enter') e.preventDefault(); });
+  d.oninput = () => { $('#prErrore').hidden = true; };      // l'avviso sparisce appena si corregge
+  d.returnValue = ''; d.showModal();
+  if (!p) $('#prNome').focus();
+  d.onclose = async () => {
+    $('#mirino').hidden = true;
+    if (d.returnValue !== 'ok') return;
+    const pos = posizione(); const nome = $('#prNome').value.trim();
+    if (pos.errore || !nome) return;
+    const persone = [...box.querySelectorAll('.persona-riga')]
+      .map(r => ({ nome: r.querySelector('.pn').value.trim(), tel: r.querySelector('.pt').value.trim(), ruolo: r.querySelector('.pr').value.trim() }))
+      .filter(x => x.nome || x.tel);
+    const id = p?.id || ('P' + Date.now().toString(36) + Math.random().toString(36).slice(2, 5));
+    const dati = { ...(p ? campiPresidio(p) : { creatoDa: S.nome, creatoIl: Date.now() }),
+      nome, funzione: $('#prFunzione').value.trim(), persone, note: $('#prNote').value.trim(),
+      lat: +pos.lat.toFixed(7), lon: +pos.lon.toFixed(7), km: Math.round(pos.pr.km * 1000) / 1000 };
+    const mosso = p ? dist([p.lat, p.lon], [dati.lat, dati.lon]) : 0;
+    await S.store.scriviPresidio(id, dati, {
+      azione: p ? 'presidio_modificato' : 'presidio_creato',
+      note: `${nome}${persone.length ? `, ${persone.length} ${persone.length === 1 ? 'persona' : 'persone'}` : ''}${mosso >= 1 ? `, spostato di ${fmtDist(mosso)}` : ''}`,
+      lat: dati.lat, lon: dati.lon });
+    toast(p ? 'Presidio aggiornato' : `Presidio «${nome}» aggiunto`);
+    selezionaPresidio(id);
+  };
+}
+
 /* =========================================================== livelli, OSM, offline */
 function apriLivelli() {
   const d = $('#dlgLivelli');
@@ -1009,7 +1292,7 @@ function apriLivelli() {
   d.querySelectorAll('[name=base]').forEach(r => { r.checked = r.value === base; r.onchange = () => {
     Object.values(layers.base).forEach(l => l.remove()); layers.base[r.value].addTo(map); layers.base[r.value].bringToBack(); LS.set('base', r.value); }; });
   d.querySelectorAll('[name=ov]').forEach(c => {
-    const lay = { cai: layers.cai, osm: layers.bivi, svolte: layers.svolte, poi: layers.poi, squadra: layers.squadra }[c.value];
+    const lay = { cai: layers.cai, osm: layers.bivi, svolte: layers.svolte, poi: layers.poi, squadra: layers.squadra, presidi: layers.presidi }[c.value];
     c.checked = map.hasLayer(lay);
     c.onchange = () => {
       LS.set('ov:' + c.value, c.checked ? '1' : '0');
@@ -1108,7 +1391,8 @@ function scarica(nome, testo, tipo) {
   setTimeout(() => URL.revokeObjectURL(a.href), 2000);
 }
 function esportaGpx() {
-  const w = S.segnali.map(s => `<wpt lat="${s.lat}" lon="${s.lon}"><ele>${Math.round(S.traccia.at(s.km)[2])}</ele><name>${esc(N(s))}</name><desc>${s.frecce.map(f => `${f.codice} ${DIR_LABEL[f.dir]} km ${fmtKm(f.km)}`).join('; ')}. ${STATI[s.stato].label}${s.nota ? '. ' + esc(s.nota) : ''}</desc><sym>Flag, Red</sym></wpt>`).join('\n');
+  const w = S.segnali.map(s => `<wpt lat="${s.lat}" lon="${s.lon}"><ele>${Math.round(S.traccia.at(s.km)[2])}</ele><name>${esc(N(s))}</name><desc>${s.frecce.map(f => `${f.codice} ${DIR_LABEL[f.dir]} km ${fmtKm(f.km)}`).join('; ')}. ${STATI[s.stato].label}${s.nota ? '. ' + esc(s.nota) : ''}</desc><sym>Flag, Red</sym></wpt>`)
+    .concat(S.presidi.map(p => `<wpt lat="${p.lat}" lon="${p.lon}"><name>Presidio ${esc(p.nome)}</name><desc>${esc([p.funzione, ...(p.persone || []).map(x => [x.nome, x.ruolo, x.tel].filter(Boolean).join(' ')), p.note].filter(Boolean).join('. '))}</desc><sym>Flag, Green</sym></wpt>`)).join('\n');
   scarica('segnali-srm2026.gpx', `<?xml version="1.0" encoding="UTF-8"?>\n<gpx version="1.1" creator="Segnaletica SRM 2026" xmlns="http://www.topografix.com/GPX/1/1">\n<metadata><name>Segnaletica SRM 2026</name></metadata>\n${w}\n</gpx>`, 'application/gpx+xml');
 }
 function esportaCsv() {
