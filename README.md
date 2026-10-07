@@ -1,9 +1,10 @@
 # Segnaletica SRM 2026
 
-Strumento di campo per **verificare, posare e rimuovere** la segnaletica temporanea della Skyrace del Maglio (18 ottobre 2026), nel rispetto del disciplinare del Parco Sirente Velino.
+Strumento di campo per **verificare, posare e rimuovere** la segnaletica temporanea della Skyrace del Maglio (18 ottobre 2026), nel rispetto del disciplinare del Parco Sirente Velino, e per organizzare i **presidi** lungo il percorso.
 
-- **Mappa:** https://fringuello79.github.io/SRMsegnaletica/
-- **Report per i volontari** (stampabile in PDF): https://fringuello79.github.io/SRMsegnaletica/report.html
+- **Accesso staff dal sito ufficiale:** https://www.skyracedelmaglio.it/staff/ (voce «Accesso staff» nel menu, dopo Live)
+- **Report per i volontari** (stampabile in PDF): https://www.skyracedelmaglio.it/staff/report.html
+- Questo repository è l'originale: la cartella `staff/` del sito è una copia, da aggiornare con `tools/pubblica-sul-sito.sh` (il sito è pubblicato dal ramo `claude/affectionate-ptolemy-s07mf5` del repository `skyracedelmaglio`). Resta attivo anche https://fringuello79.github.io/SRMsegnaletica/, con gli stessi dati.
 
 Funziona dal telefono, anche senza campo: le modifiche restano sul telefono e partono appena torna la rete.
 
@@ -16,6 +17,7 @@ Funziona dal telefono, anche senza campo: le modifiche restano sul telefono e pa
 - Mostra la posizione dei volontari sul percorso (ognuno può spegnerla) e la storia di tutte le azioni, che non si può cancellare.
 - Esporta i segnali in **GPX** (per orologio o GPS) e l'inventario in **CSV**.
 - Mostra il conto alla rovescia per la rimozione: entro **mercoledì 21 ottobre alle 16:00**, 72 ore dalla chiusura.
+- **Presidi** (omino verde, pulsante verde sulla mappa): nome, funzione (ristoro, soccorso, controllo, cancello…), persone presenti con telefono e ruolo, note. Posizione da GPS, dal mirino o da coordinate precise. Nella scheda «Presidi» i numeri si chiamano con un tocco e l'elenco si può inviare su WhatsApp; i presidi compaiono anche nel report e nel GPX.
 
 ## Il piano iniziale
 
@@ -57,14 +59,16 @@ Se `firebase-config.js` contiene `null`, lo strumento gira in **modalità prova*
 **Già configurato** il 1° ottobre 2026 sul progetto Firebase `srm-segnaletica` dell'account del club (piano gratuito Spark):
 - accesso anonimo attivo;
 - database Firestore a Milano (`europe-west8`) con le regole di `firestore.rules`;
-- dominio `fringuello79.github.io` autorizzato;
+- dominio `fringuello79.github.io` autorizzato (l'accesso anonimo funziona anche da www.skyracedelmaglio.it);
 - configurazione web in `firebase-config.js`.
 
-Il **codice squadra non è scritto in questo repository**, perché il repository è pubblico: lo distribuisce Ale insieme al link `https://fringuello79.github.io/SRMsegnaletica/#squadra=CODICE`. Chi apre il link entra direttamente nella squadra; chi non ha il codice non vede nulla.
+Il **codice squadra non è scritto in questo repository**, perché il repository è pubblico: lo distribuisce Ale insieme al link `https://www.skyracedelmaglio.it/staff/#squadra=CODICE`. Chi apre il link entra direttamente nella squadra; chi non ha il codice non vede nulla. Il codice si scrive esattamente com'è (maiuscole e minuscole sono equivalenti, gli spazi vengono tolti).
+
+Il 7 ottobre 2026 il codice è stato cambiato con uno più corto: paletti e storia sono stati copiati sotto il nuovo codice (i dati sotto il vecchio restano come copia di sicurezza). Chi aveva salvato il vecchio codice viene invitato a inserire il nuovo: l'app riconosce il vecchio dalla sua impronta SHA-256 (`CODICI_DISMESSI` in `js/app.js`), senza che il codice compaia nel sorgente.
 
 Per cambiare le regole: Console Firebase → Firestore Database → Regole, incolla `firestore.rules` e premi **Pubblica**.
 
-Per usare un nuovo codice squadra (per esempio nel 2027): basta inventarne uno di almeno 10 caratteri e premere **Carica il piano dei segnali** al primo accesso.
+Per usare un nuovo codice squadra (per esempio nel 2027): inventane uno di almeno 4 caratteri; al primo accesso l'app dice che il codice non ha dati e, sotto «Squadra nuova davvero?», permette di caricare il piano dei segnali.
 
 ## Come si usa sul percorso
 
@@ -90,12 +94,14 @@ js/geo.js             calcoli sulla traccia (km, proiezioni, direzioni)
 js/frecce.js          disegno delle frecce SRM
 data/                 traccia, piano dei segnali, punti gara, GPX del piano
 tools/genera_piano.py rigenera data/ dalla traccia GPX
+tools/pubblica-sul-sito.sh copia l'app nella cartella /staff/ del sito ufficiale
 sw.js                 funzionamento senza rete
 ```
 
 Dati in Firestore, sotto `squadre/{codice}/`:
 - `segnali/{S01…}`: posizione, frecce, stato, chi e quando;
 - `eventi/`: storia delle azioni, solo aggiunte, con foto ridotte;
+- `presidi/{id}`: nome, funzione, persone (nome, telefono, ruolo), note, posizione e km;
 - `volontari/{uid}`: ultima posizione condivisa.
 
 Mappe: © Esri World Imagery, © OpenTopoMap, © OpenStreetMap, sentieri © waymarkedtrails.org.
